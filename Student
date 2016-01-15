@@ -1,0 +1,191 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Data;
+using System.Data.OleDb;
+using System.Windows.Forms;
+
+namespace Student_Traker_DB.Classes
+{
+    public class Student
+    {
+        /*
+#if USINGPROJECTSYSTEM
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=..\\..\\..\\..\\..\\TicketSales_StudentTraker.mdb";
+#else
+        //string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Data\\TicketSales_StudentTraker.mdb";
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=E:\\TicketSales_StudentTraker_be.mdb";
+#endif*/
+
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        private string strSelect = "Select * from tbl_Students;";
+        private string sql;
+        private int Studentid;
+        private string Lastname;
+        private string Firstname;
+        private string MiddleInitial;
+        private string dob;
+        private string Inductdate;
+        private string Inductcenter;
+        private string RTCEntdate;
+        private int Ad_ID;
+        private int Phs_ID;
+        private int Tms_ID;
+
+        OleDbCommand cmd;
+        OleDbConnection con = null;
+        OleDbDataAdapter daStudents;
+
+        DataRow dRow;
+        DataSet ds = new DataSet();
+        DataTable dtStudents = new DataTable("tbl_Students");
+
+        private int StudentMaxRows = 0;
+
+        
+        // get/sets StudentMaxRows
+        public int STUDENTMAXROWS
+        {
+            get { return StudentMaxRows; }
+            set { StudentMaxRows = value; }
+        }
+
+        //get/sets Ad_ID
+        public int ADVISORID
+        {
+            get { return Ad_ID; }
+            set { Ad_ID = value; }
+        }
+
+        //get/sets Phs_ID
+        public int PHASEID
+        {
+            get { return Phs_ID; }
+            set { Phs_ID = value; }
+        }
+
+        //get/sets sql
+        public string SQL
+        {
+            get { return sql; }
+            set { sql = value; }
+        }
+
+        //get/sets studentid
+        public int STUDENTID
+        {
+            get { return Studentid; }
+            set { CreateStudentID(Lastname); }
+        }
+
+        //get/sets lastname
+        public string LASTNAME
+        {
+            get { return Lastname; }
+            set { Lastname = value; }
+        }
+
+        //get/sets firstname
+        public string FIRSTNAME
+        {
+            get { return Firstname; }
+            set { Firstname = value; }
+        }
+
+        // get/sets MiddleInitial
+        public string MIDDLEINITIAL
+        {
+            get { return MiddleInitial; }
+            set { MiddleInitial = value.ToUpper(); }
+        }
+
+        // get/sets induction date
+        public string INDUCTDATE
+        {
+            get { return Inductdate; }
+            set { Inductdate = value; }
+        }
+
+        // get/sets induction center
+        public string INDUCTCENTER
+        {
+            get { return Inductcenter; }
+            set { Inductcenter = value; }
+        }
+
+        // get/sets riverside entry date
+        public string RTC_ENT_DATE
+        {
+            get { return RTCEntdate; }
+            set { RTCEntdate = value; }
+        }
+
+        //get/sets Date of birth
+        public string DOB
+        {
+            get { return dob; }
+            set { dob = value; }
+        }
+
+        private int CreateStudentID(string txt)
+        {
+            // take the text input and store in string
+            string value = txt;
+            //convert to a signed hash code int value 
+            Studentid = value.GetHashCode();
+            // convert to a positive value
+            // store in int Studentid 
+            Studentid = Math.Abs(Studentid);
+            return Studentid;
+        }
+
+        public void InsertStudent()
+        {
+            string date;
+            DateTime newDate = new DateTime();
+            try
+            {
+                con = new OleDbConnection(strConnect);
+
+                con.Open();
+               
+                CreateStudentID(LASTNAME + MIDDLEINITIAL.ToUpper() + FIRSTNAME );
+                //Input new Student into the tbl_Students table
+                //date = txtDateOfBirth.Text.ToString();
+                //newDate = DateTime.ParseExact(date, "MM/dd/yyyy", null);
+                cmd = new OleDbCommand("Insert into tbl_Students(StudentID, Last_Name, " +
+                    "First_Name, Middle_Initial, Date_Of_Birth, Induction_Date, Induct_Center, RTC_Entry_Date," +
+                    "AdvisorID, PhaseID)" +
+                    "Values(@StudentID, @Last_Name, @First_Name, @Middle_Initial," +
+                    "@Date_Of_Birth, @Induction_Date, @Induct_Center, @RTC_Entry_Date, @AdvisorID, @PhaseID)", con);
+                cmd.Parameters.Add("@StudentID", OleDbType.Integer).Value = STUDENTID;
+                cmd.Parameters.Add("@Last_Name", OleDbType.Char).Value = LASTNAME;
+                cmd.Parameters.Add("@First_Name", OleDbType.Char).Value = FIRSTNAME;
+                cmd.Parameters.Add("@Middle_Initial", OleDbType.Char).Value = MIDDLEINITIAL;
+                date = DOB;//txtDateOfBirth.Text.ToString();
+                newDate = DateTime.ParseExact(date, "M/d/yyyy", null);
+                cmd.Parameters.Add("@Date_Of_Birth", OleDbType.DBDate).Value = newDate;
+                date = INDUCTDATE;//txtInductionDate.Text.ToString();
+                newDate = DateTime.ParseExact(date, "M/d/yyyy", null);
+                cmd.Parameters.Add("@Induction_Date", OleDbType.DBDate).Value = newDate;
+                cmd.Parameters.Add("@Induct_Center", OleDbType.Char).Value = INDUCTCENTER;
+                date = RTC_ENT_DATE;//txtRTCEntryDate.Text.ToString();
+                newDate = DateTime.ParseExact(date, "M/d/yyyy", null);
+                cmd.Parameters.Add("@RTC_Entry_Date", OleDbType.DBDate).Value = newDate;
+                cmd.Parameters.Add("@AdvisorID", OleDbType.Integer).Value = ADVISORID;//cboAdvisor.SelectedValue;
+                cmd.Parameters.Add("@PhaseID", OleDbType.Integer).Value = PHASEID;//cboPhase.SelectedValue;
+                cmd.ExecuteNonQuery();
+
+            }
+            catch (Exception err)
+            {
+                MessageBox.Show(err.Message);
+            }
+            finally
+            {
+                cmd.Dispose();
+                con.Close();
+            }
+        }
+    }
+}
