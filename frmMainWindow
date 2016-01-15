@@ -1,0 +1,115 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Threading;
+using System.Text;
+using System.Windows.Forms;
+using Student_Traker_DB.Classes;
+using Student_Traker_DB.Forms;
+using System.Data.OleDb;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmMainWindow : Form
+    {
+        public Hardworker worker;
+
+        private Splashscreen splashScreen;
+        private bool done = false;
+
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        private OleDbCommand cmd;
+        private OleDbConnection connect;
+        private OleDbDataReader dr;
+
+        public frmMainWindow()
+        {
+            InitializeComponent();
+            this.Load += new EventHandler(HandleFormLoad);
+            this.splashScreen = new Splashscreen();
+        }
+
+        private void HandleFormLoad(object sender, EventArgs e)
+        {
+            this.Hide();
+            Thread thread = new Thread(new ThreadStart(this.ShowSplashScreen));
+            thread.Start();
+            worker = new Hardworker();
+            worker.ProgrssChanged += (o, ex) =>
+            {
+                this.splashScreen.UpdateProgress(ex.Progress);
+            };
+            worker.HardWorkDone += (o, ex) =>
+            {
+                done = true;
+                this.Show();
+            };
+            worker.DoHardWork();
+
+        }
+
+        private void ShowSplashScreen()
+        {
+            splashScreen.Show();
+
+            while (!done)
+            {
+                Application.DoEvents();
+            }
+            splashScreen.Close();
+            this.splashScreen.Dispose();
+        }
+
+        private void frmMainWindow_Load(object sender, EventArgs e)
+        {
+            //Clear two month old events. 
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            string cmdstr = "DELETE FROM tbl_Schedule WHERE EndDate <= #" + DateTime.Today.Add(new TimeSpan(-60,0,0,0)) + "#;";
+            cmd = new OleDbCommand(cmdstr, connect);
+            cmd.ExecuteNonQuery();
+
+            connect.Close();
+        }
+
+        private void btnTicketSales_Click(object sender, EventArgs e)
+        {
+            frmDepartments Bboard = new frmDepartments();
+            Bboard.Show();
+
+        }
+
+        private void btnStudentInfo_Click(object sender, EventArgs e)
+        {
+           frmStudentInfo Students = new frmStudentInfo();
+            Students.Show();
+        }
+
+        private void btnExit_Click(object sender, EventArgs e)
+        {
+            this.Dispose();
+            this.Close();
+        }
+
+        private void btnList_Click(object sender, EventArgs e)
+        {
+            frmListPreamble preamble = new frmListPreamble();
+            preamble.Show();
+        }
+
+        private void btnScheduler_Click(object sender, EventArgs e)
+        {
+            frmMasterSchedule schedule = new frmMasterSchedule();
+            schedule.Show();
+        }
+
+        private void btnPrint_Click(object sender, EventArgs e)
+        {
+            frmPrint print = new frmPrint();
+            print.Show();
+        }
+    }
+}
