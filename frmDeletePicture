@@ -1,0 +1,61 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Data.OleDb;
+using System.Linq;
+using System.Drawing;
+using System.Threading;
+using System.Text;
+using System.Windows.Forms;
+using System.IO;
+
+using Student_Traker_DB.Classes;
+using Student_Traker_DB.Forms;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmDeletePicture : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        OleDbConnection connect = null;
+        OleDbCommand cmd = null;
+
+        ImageCollector img = new ImageCollector();
+
+        int idnumber;
+
+        public frmDeletePicture(int studentid)
+        {
+            idnumber = studentid;
+            InitializeComponent();
+        }
+
+        private void frmDeletePicture_Load(object sender, EventArgs e)
+        {
+            LoadImage();
+        }
+
+        private void LoadImage()
+        {
+            
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            
+
+            string cmdstr = "SELECT tbl_Image.IMG FROM tbl_Image WHERE tbl_Image.StudentID=" + idnumber + ";";
+            cmd = new OleDbCommand(cmdstr, connect);
+
+            try
+            {
+                pbxFace.Image = img.ByteArrayToImage((Byte[])cmd.ExecuteScalar());
+            }
+
+            catch (NullReferenceException)
+            {
+                Byte[] imagebyte = img.ReadImageFile("C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Resources\\TCLogo_Portrait.jpg");
+                pbxFace.Image = img.ByteArrayToImage(imagebyte);
+            }
+        }
+    }
+}
