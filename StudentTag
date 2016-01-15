@@ -1,0 +1,408 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Drawing;
+using System.Data;
+using System.Data.OleDb;
+using System.Text;
+using System.Windows.Forms;
+using Student_Traker_DB.Classes;
+using Student_Traker_DB.Forms;
+
+namespace Student_Traker_DB
+{
+    public partial class StudentTag : UserControl
+    {
+         /*
+#if USINGPROJECTSYSTEM
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=..\\..\\..\\..\\..\\TicketSales_StudentTraker.mdb";
+#else
+        //string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Data\\TicketSales_StudentTraker.mdb";
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=E:\\TicketSales_StudentTraker_be.mdb";
+#endif*/
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        //StudentTag Tag = new StudentTag();
+      
+        Student student = new Student();
+        ImageCollector img = new ImageCollector();
+        CurrentStatus Status = new CurrentStatus();
+        OleDbConnection con = null;
+        OleDbCommand cmd;
+        OleDbDataReader dr;
+        OleDbDataAdapter daStudents;
+        OleDbDataAdapter daImage;
+        OleDbDataAdapter daAdvisor;
+
+        DataSet dsTicketSales = new DataSet();
+       /* DataTable dtStudents = new DataTable("tbl_Students");
+        DataTable dtImage = new DataTable("tbl_Image");
+        DataTable dtStatus = new DataTable("tbl_Status");
+        DataTable dtCurrentStatus = new DataTable("tbl_CurrentStatus");
+        DataTable dtPhase = new DataTable("tbl_Phase");
+        DataTable dtAdvisor = new DataTable("tbl_Advisor");*/
+
+        DataRow dRow;
+
+        System.Windows.Forms.ToolTip hover = new System.Windows.Forms.ToolTip();
+            
+        
+        int StudentsMaxRows = 0;
+        int ImageMaxRows = 0;
+        int intAdvisor = 0;
+        int StudentID = 0;
+        int x, y;
+        Point location;
+        int deptid;
+        int phaseid;
+        string findStudent = "Select * from tbl_Students;";
+        bool chkvis;
+        bool delvis;
+        bool edstudinfo = false;
+        bool bigboard = false;
+        bool draggable;
+
+        public StudentTag()
+        {
+            InitializeComponent();
+            StudentTag studenttag = new StudentTag();
+            studenttag.Show();
+            //studenttag.BringToFront();
+        }
+
+        public StudentTag(int studentID)
+        {
+            InitializeComponent();
+            lblStudentID.Text = studentID.ToString();
+            StudentID = studentID;   
+        }
+
+        public StudentTag(int studentID, Point loc)
+        {
+            InitializeComponent();
+            lblStudentID.Text = studentID.ToString();
+            StudentID = studentID;
+            loc = this.LOCATION;
+            StudentTag studenttag = new StudentTag();
+            studenttag.Show();
+            studenttag.BringToFront();
+        }
+
+        private void StudentTag_Load(object sender, EventArgs e)
+        {
+            try
+            {
+                con = new OleDbConnection(strConnect);
+                LoadImage(StudentID);
+                GetStudent(StudentID);
+                GetHoverText();
+                GetStickersandBackColor();
+
+                if (this.DRAGGABLE == true)
+                {
+                    this.Draggable(true);
+                    chkDraggable.Checked = true;
+                    chkDraggable.CheckState = CheckState.Checked;
+                }
+
+                else
+                {
+                    this.Draggable(false);
+                    chkDraggable.Checked = false;
+                    chkDraggable.CheckState = CheckState.Unchecked;
+                }
+            }
+            catch (Exception err)
+            {
+                MessageBox.Show(err.Message);
+            }
+            finally
+            {
+                con.Close();
+            }
+            
+        }
+
+        private void GetStickersandBackColor()
+        {
+            if (this.con.State.ToString() != "Open")
+            {
+                this.con.Open();
+            }
+
+            string cmdstr = "SELECT * FROM tbl_BigBoard WHERE StudentID=" + StudentID + ";";
+            cmd = new OleDbCommand(cmdstr, con);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                // Set DepartmentID value =]
+                this.DEPARTMENTID = Convert.ToInt32(dr["DepartmentID"]);
+
+                cirGED.Visible = Convert.ToBoolean(dr["GED"]);
+                lblGED.Visible = Convert.ToBoolean(dr["GED"]);
+
+                cirFlagged.Visible = Convert.ToBoolean(dr["Flagged"]);
+                lblFlagged.Visible = Convert.ToBoolean(dr["Flagged"]);
+
+                if (Convert.ToBoolean(dr["Flagged"]) == true)
+                {
+                    DateTime flagdate = Convert.ToDateTime(dr["FlagEndDate"]);
+                    hover.SetToolTip(lblFlagged, "Flagged until " + flagdate.ToString("MM/dd/yyyy") + "");
+                }
+
+                cirFundraiser.Visible = Convert.ToBoolean(dr["Fundraiser"]);
+                lblFundraiser.Visible = Convert.ToBoolean(dr["Fundraiser"]);
+
+                if (Convert.ToBoolean(dr["Apprentice"]) == true)
+                {
+                    this.BackColor = Color.Black;
+                    lblStudentAdvisor.ForeColor = Color.White;
+                    lblMid_Initial.ForeColor = Color.White;
+                    lblFirstName.ForeColor = Color.White;
+                    lblLastName.ForeColor = Color.White;
+                    lblRTC_Entry_Date.ForeColor = Color.White;
+                    lblPhaseID.ForeColor = Color.White;
+                }
+
+                else if (Convert.ToBoolean(dr["StudentLeader"]) == true)
+                {
+                    this.BackColor = Color.Crimson;
+                }
+
+                else 
+                {
+                    this.BackColor = Color.Teal;
+                }
+            }
+            dr.Close();
+        }
+
+        private void GetHoverText()
+        {
+            hover.SetToolTip(this.chkDraggable, "Check to drag");
+            hover.SetToolTip(this.lblFundraiser, "Fundraiser");
+            hover.SetToolTip(this.lblGED, "GED Class");
+            hover.SetToolTip(this.lblPhaseID, "Phase");
+        }
+
+        private void GetAdvisor(string id)
+        {
+            cmd = new OleDbCommand("Select * from tbl_Advisor where AdvisorID ="
+                + id + ";", con);
+            daAdvisor = new OleDbDataAdapter(cmd);
+            daAdvisor.Fill(dsTicketSales, "tbl_Advisor");
+            intAdvisor = dsTicketSales.Tables["tbl_Advisor"].Rows.Count;
+
+            dRow = dsTicketSales.Tables["tbl_Advisor"].Rows[intAdvisor - 1];
+            lblStudentAdvisor.Text = dRow.ItemArray.GetValue(1).ToString();
+        }
+
+        private void GetStudent(int studID)
+        {
+            string date, value;
+            DateTime Date;
+            if (this.con.State.ToString() != "Open")
+            {
+                this.con.Open();
+            }
+
+            cmd = new OleDbCommand("Select * from tbl_Students where StudentID=" + studID + ";", con);
+            dsTicketSales = new DataSet();
+            dsTicketSales.Tables.Add("tbl_Students");
+            daStudents = new OleDbDataAdapter(cmd);
+            OleDbCommandBuilder oleBld = new OleDbCommandBuilder(daStudents);
+
+            daStudents.Fill(dsTicketSales, "tbl_Students");
+            if (StudentsMaxRows > 0)
+            {
+                return;
+            }
+            else
+            {
+                StudentsMaxRows = dsTicketSales.Tables["tbl_Students"].Rows.Count;
+                //StudentID = StudentsMaxRows;
+            }
+
+            dRow = dsTicketSales.Tables["tbl_Students"].Rows[0];
+            value = dRow.ItemArray.GetValue(0).ToString();
+            StudentID = Convert.ToInt32(value);
+            lblLastName.Text = dRow.ItemArray.GetValue(1).ToString();
+            lblFirstName.Text = dRow.ItemArray.GetValue(2).ToString();
+            lblMid_Initial.Text = dRow.ItemArray.GetValue(3).ToString();
+
+            // Set PhaseID value for tag
+            this.PHASEID = Convert.ToInt32(dRow.ItemArray.GetValue(10));
+
+            if (dRow.ItemArray.GetValue(10).ToString() == "5")
+            {
+                lblPhaseID.Text = "A";
+               
+            }
+
+            else
+            {
+                lblPhaseID.Text = dRow.ItemArray.GetValue(10).ToString();
+            }
+
+            date = dRow.ItemArray.GetValue(7).ToString();
+            if (date == "")
+            {
+                lblRTC_Entry_Date.Text = "NO date!";
+            }
+            else
+            {
+                Date = DateTime.Parse(date);
+                lblRTC_Entry_Date.Text = Date.ToString("M/dd/yyyy");
+            }
+
+            value = dRow.ItemArray.GetValue(9).ToString();
+            GetAdvisor(value);
+      
+            this.BackColor = Color.Orange; // Until I reconfigure everything! 
+        }
+
+        private void LoadImage(int id)
+        {
+            if (con.State.ToString() != "Open")
+            {
+                con = new OleDbConnection(strConnect);
+                con.Open();
+            }
+
+            string cmdstr = "SELECT tbl_Image.IMG FROM tbl_Image WHERE tbl_Image.StudentID=" + id + ";";
+            cmd = new OleDbCommand(cmdstr, con);
+
+            try
+            {
+                pbxStudentPic.Image = img.ByteArrayToImage((Byte[])cmd.ExecuteScalar());
+            }
+
+            catch (NullReferenceException)
+            {
+                Byte[] imagebyte = img.ReadImageFile("C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Resources\\TCLogo_Portrait.jpg");
+                pbxStudentPic.Image = img.ByteArrayToImage(imagebyte);
+            }
+        }
+
+        public bool DRAGGABLE
+        {
+            get { return draggable; }
+            set { draggable = value; }
+        }
+
+        public bool BIGBOARD
+        {
+            get { return bigboard; }
+            set { bigboard = value; }
+        }
+
+        public bool CHKBOXVISIBLE
+        {
+            get { return this.chkDraggable.Visible; }
+            set { this.chkDraggable.Visible = chkvis; }
+        }
+
+        public bool DELETEVISIBLE
+        {
+            get { return this.btnDeleteStudentTag.Visible; }
+            set { this.btnDeleteStudentTag.Visible = delvis; }
+        }
+
+        public bool EDITSTUDINFO
+        {
+            get { return edstudinfo; }
+            set { edstudinfo = value; }
+        }
+
+        public int DEPARTMENTID
+        {
+            get { return deptid; }
+            set { deptid = value; }
+        }
+
+        public int PHASEID
+        {
+            get { return phaseid; }
+            set { phaseid = value; }
+        }
+
+        public int X
+        {
+            get { return x; }
+            set { x = this.Location.X; }
+        }
+
+        public int Y
+        {
+            get { return y; }
+            set { y = this.Location.Y; }
+        }
+
+        public Point LOCATION
+        {
+            get { return location; }
+            set { location = new Point(this.Location.X, this.Location.Y); }
+        }
+
+        public int STUDENTID
+        {
+            get { return StudentID; }
+            set { StudentID = value; }
+        }
+
+        private void chkDraggable_CheckedChanged(object sender, EventArgs e)
+        {
+            this.DRAGGABLE = chkDraggable.Checked;
+            this.Draggable(chkDraggable.Checked);
+            this.BringToFront();
+        }
+
+        private void StudentTag_Click(object sender, EventArgs e)
+        {
+          
+                  
+        }
+
+        private void StudentTag_LocationChanged(object sender, EventArgs e)
+        {
+            //frmTicketSales TS = new frmTicketSales();
+            //Properties.Settings.Default.PanelLocation = 
+            //this.Location = this.Location;
+            this.X = this.Location.X;
+            this.Y = this.Location.Y;
+            this.LOCATION = new Point(this.Location.X, this.Location.Y);
+            //MessageBox.Show("Here is the current location: " + location);
+        }
+
+        private void StudentTag_DoubleClick(object sender, EventArgs e)
+        {
+            this.Focus();
+            this.BringToFront();
+
+            frmStudentInfo studinfo = new frmStudentInfo(this.StudentID, true);
+            DialogResult diainfo = studinfo.ShowDialog(); 
+
+            if(this.BIGBOARD == true)
+            {
+                if (diainfo == DialogResult.OK)
+                {
+                    this.ParentForm.Close(); 
+                    frmDepartments newformbigb = new frmDepartments();
+                    newformbigb.Show();
+                }
+            }
+
+        }
+        private void StudentTag_RightClick(object sender, EventArgs e)
+        {
+            this.BringToFront();
+        }
+
+        private void btnDeleteStudentTag_Click(object sender, EventArgs e)
+        {
+            this.Visible = false;
+                
+        }
+
+    }
+}
