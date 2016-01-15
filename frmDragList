@@ -1,0 +1,2907 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Threading;
+using System.Globalization;
+using System.IO;
+using System.IO.Packaging;
+using System.Linq;
+using System.Text;
+using System.Reflection;
+using System.Windows.Forms;
+using Student_Traker_DB.User_Controls;
+using Student_Traker_DB.Classes;
+using ControlManager;
+using Student_Traker_DB.Forms;
+using System.Text.RegularExpressions;
+using Word = Microsoft.Office.Interop.Word;
+using System.Data.OleDb;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmDragList : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        private OleDbConnection connect = null;
+        private OleDbDataReader dr = null;
+        private OleDbCommand cmd = null;
+
+        public frmSearchResults Search;
+        public static List<int> VisDepIDs = null;
+        public static List<int> VisPhaseIDs = null;
+
+        private int frmtype;
+        private int eventid;
+        private bool editmode = false;
+        private List<StudentTag> tags = new List<StudentTag>();
+       
+        private DateTime stime;
+        private DateTime etime;
+
+        private DateTime datework = frmListPreamble.datework;
+        private string titlework = frmListPreamble.titlework;
+        private DateTime depwork = frmListPreamble.depwork;
+        private DateTime retwork = frmListPreamble.retwork;
+        private int vanwork = frmListPreamble.vanwork;
+
+        private DateTime datefund = frmListPreamble.datefund;
+        private string d2d = frmListPreamble.d2dfund;
+        private DateTime depfund = frmListPreamble.depfund;
+        private DateTime retfund = frmListPreamble.retfund;
+
+        private DateTime datechoir = frmListPreamble.datechoir;
+        private string titlechoir = frmListPreamble.titlechoir;
+        private string addresschoir = frmListPreamble.addresschoir;
+        private DateTime breakchoir = frmListPreamble.breakchoir;
+        private DateTime depchoir = frmListPreamble.depchoir;
+        private DateTime retchoir = frmListPreamble.retchoir;
+        private DateTime startchoir = frmListPreamble.startchoir;
+
+        private DateTime datebanq = frmListPreamble.datebanq;
+        private string titlebanq = frmListPreamble.titlebanq;
+        private DateTime timebanq = frmListPreamble.timebanq;
+        private DateTime endbanq = frmListPreamble.endbanq;
+
+        public frmDragList(int type)
+        {
+            frmtype = type;
+            InitializeComponent();
+        }
+
+        public frmDragList(string strSCHEDID)
+        {
+            eventid = Convert.ToInt32(strSCHEDID);
+            editmode = true;
+            InitializeComponent();
+        }
+
+        private void frmDragList_Load(object sender, EventArgs e)
+        {
+            if (editmode == true)
+            {
+                LoadEvent();
+            }
+
+            Mode(frmtype);
+            LoadAvailableStudents();
+            ResetTags(); 
+        }
+
+        private void LoadEvent()
+        {
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            string cmdstr = "SELECT Type FROM tbl_Schedule WHERE ScheduleID=" + eventid + ";";
+            cmd = new OleDbCommand(cmdstr, connect);
+            frmtype = Convert.ToInt32(cmd.ExecuteScalar());
+
+            cmdstr = "SELECT * FROM tbl_Schedule WHERE ScheduleID=" + eventid + ";";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            bool first = true;
+            
+            while (dr.Read())
+            {
+                if (first == true)
+                {
+                    switch (frmtype)
+                    {
+                        case 1:
+                            datework = Convert.ToDateTime(dr["StartDate"]).Date;
+                            depwork = Convert.ToDateTime(dr["StartDate"]);
+                            retwork = Convert.ToDateTime(dr["EndDate"]);
+                            titlework = dr["Note"].ToString();
+                            break;
+                        case 2:
+                            datefund = Convert.ToDateTime(dr["StartDate"]).Date;
+                            depfund = Convert.ToDateTime(dr["StartDate"]);
+                            retfund = Convert.ToDateTime(dr["EndDate"]);
+                            d2d = "D2D"; // Dang, I need to think a reformat to store all this info!
+                            break;
+                        case 3:
+                            addresschoir = "";
+                            titlechoir = dr["Note"].ToString();
+                            depchoir = Convert.ToDateTime(dr["StartDate"]);
+                            retchoir = Convert.ToDateTime(dr["EndDate"]);
+                            breakchoir = depchoir.Add(new TimeSpan(0,-30,0));
+                            startchoir = depchoir.Add(new TimeSpan(1, 30, 0));
+                            datechoir = depchoir.Date;
+                            break;
+                        case 4:
+                            titlebanq = dr["Note"].ToString();
+                            timebanq = Convert.ToDateTime(dr["StartDate"]);
+                            endbanq = Convert.ToDateTime(dr["EndDate"]);
+                            datebanq = timebanq.Date;
+                            break;
+                    }
+                    first = false;
+                }
+
+                int idnumber = Convert.ToInt32(dr["StudentID"]);
+
+                // Get PhaseID and DepartmentID
+                OleDbConnection con = new OleDbConnection(strConnect);
+                con.Open();
+
+                string cmdstrID = "SELECT PhaseID FROM tbl_Students WHERE StudentID=" + idnumber + ";";
+                OleDbCommand cmdID = new OleDbCommand(cmdstrID, con);
+                int phase = Convert.ToInt32(cmdID.ExecuteScalar());
+
+                cmdstrID = "SELECT DepartmentID FROM tbl_BigBoard WHERE StudentID=" + idnumber + ";";
+                cmdID = new OleDbCommand(cmdstrID, con);
+                int dept = Convert.ToInt32(cmdID.ExecuteScalar());
+
+                con.Close();
+
+                AddControlToForm(new StudentTag(idnumber), idnumber, phase, dept, false);
+                tags[tags.Count - 1].Location = new Point(Convert.ToInt32(dr["x_pos"]),Convert.ToInt32(dr["y_pos"]));
+            }
+
+            dr.Close();
+
+            if (frmtype == 1)// determine number of vans
+            {
+                OleDbConnection con = new OleDbConnection(strConnect);
+                con.Open();
+
+                string cmdstrVan = "SELECT Max(Van) FROM tbl_Schedule WHERE ScheduleID=" + eventid + ";";
+                OleDbCommand cmdVan = new OleDbCommand(cmdstrVan, con);
+                vanwork = Convert.ToInt32(cmdVan.ExecuteScalar());
+            }
+
+            connect.Close();
+        }
+
+        private void Mode(int type)
+        {
+            switch (type)
+            {
+                case 1:
+                    WorkCallMode();
+                    break;
+                case 2:
+                    FundMode();
+                    break;
+                case 3:
+                    ChoirMode();
+                    break;
+                case 4:
+                    BanqMode();
+                    break;
+            }
+        }
+
+        private void WorkCallMode()
+        {
+            this.Text = "New Work Call";
+            lblTitle.Text = titlework + " " + datework.ToString("D");
+            lblTimes.Text = "Depart: " + depwork.ToString("t") + " Return: " + retwork.ToString("t");
+
+            switch (vanwork)
+            {
+                case 1:
+                    rectangleShape1.Size = new Size(500, 568);
+                    rectangleShape1.Location = new Point(0, 0);
+                    rectangleShape2.Location = new Point(0, 0);
+                    rectangleShape3.Location = new Point(160, 0);
+
+                    label1.Text = "DRIVER";
+                    label2.Text = "SHOTGUN";
+                    label1.Location = new Point(3, 3);
+                    label2.Location = new Point(163, 3);
+
+                    rectangleShape4.Visible = false;
+                    rectangleShape5.Visible = false;
+                    rectangleShape6.Visible = false;
+                    rectangleShape7.Visible = false;
+                    rectangleShape8.Visible = false;
+                    rectangleShape9.Visible = false;
+                    rectangleShape10.Visible = false;
+                    rectangleShape11.Visible = false;
+                    rectangleShape12.Visible = false;
+
+                    label3.Visible = false;
+                    label4.Visible = false;
+                    label5.Visible = false;
+                    label6.Visible = false;
+                    label7.Visible = false;
+                    label8.Visible = false;
+                    break;
+
+                case 2:
+                    rectangleShape1.Size = new Size(500, 568);
+                    rectangleShape1.Location = new Point(0, 0);
+                    rectangleShape2.Location = new Point(0, 0);
+                    rectangleShape3.Location = new Point(160, 0);
+
+                    rectangleShape4.Size = new Size(500, 568);
+                    rectangleShape4.Location = new Point(0, 568);
+                    rectangleShape5.Location = new Point(0, 568);
+                    rectangleShape6.Location = new Point(160, 568);
+
+                    label1.Text = "DRIVER";
+                    label2.Text = "SHOTGUN";
+                    label1.Location = new Point(3, 3);
+                    label2.Location = new Point(163, 3);
+
+                    label3.Text = "DRIVER";
+                    label4.Text = "SHOTGUN";
+                    label3.Location = new Point(3, 568 + 3);
+                    label4.Location = new Point(163, 568 + 3);
+
+                    rectangleShape7.Visible = false;
+                    rectangleShape8.Visible = false;
+                    rectangleShape9.Visible = false;
+                    rectangleShape10.Visible = false;
+                    rectangleShape11.Visible = false;
+                    rectangleShape12.Visible = false;
+
+                    label5.Visible = false;
+                    label6.Visible = false;
+                    label7.Visible = false;
+                    label8.Visible = false;
+                    break;
+
+                case 3:
+                    rectangleShape1.Size = new Size(500, 568);
+                    rectangleShape1.Location = new Point(0, 0);
+                    rectangleShape2.Location = new Point(0, 0);
+                    rectangleShape3.Location = new Point(160, 0);
+
+                    rectangleShape4.Size = new Size(500, 568);
+                    rectangleShape4.Location = new Point(0, 568);
+                    rectangleShape5.Location = new Point(0, 568);
+                    rectangleShape6.Location = new Point(160, 568);
+
+                    rectangleShape7.Size = new Size(500, 568);
+                    rectangleShape7.Location = new Point(0, 2*568);
+                    rectangleShape8.Location = new Point(0, 2*568);
+                    rectangleShape9.Location = new Point(160, 2*568);
+                    
+                    label1.Text = "DRIVER";
+                    label2.Text = "SHOTGUN";
+                    label1.Location = new Point(3, 3);
+                    label2.Location = new Point(163, 3);
+
+                    label3.Text = "DRIVER";
+                    label4.Text = "SHOTGUN";
+                    label3.Location = new Point(3, 568 + 3);
+                    label4.Location = new Point(163, 568 + 3);
+
+                    label5.Text = "DRIVER";
+                    label6.Text = "SHOTGUN";
+                    label5.Location = new Point(3, 2 * 568 + 3);
+                    label6.Location = new Point(163, 2 * 568 + 3);
+
+                    rectangleShape10.Visible = false;
+                    rectangleShape11.Visible = false;
+                    rectangleShape12.Visible = false;
+
+                    label7.Visible = false;
+                    label8.Visible = false;
+                    break;
+
+                case 4:
+                    rectangleShape1.Size = new Size(500, 568);
+                    rectangleShape1.Location = new Point(0, 0);
+                    rectangleShape2.Location = new Point(0, 0);
+                    rectangleShape3.Location = new Point(160, 0);
+
+                    rectangleShape4.Size = new Size(500, 568);
+                    rectangleShape4.Location = new Point(0, 568);
+                    rectangleShape5.Location = new Point(0, 568);
+                    rectangleShape6.Location = new Point(160, 568);
+
+                    rectangleShape7.Size = new Size(500, 568);
+                    rectangleShape7.Location = new Point(0, 2*568);
+                    rectangleShape8.Location = new Point(0, 2*568);
+                    rectangleShape9.Location = new Point(160, 2*568);
+                    
+                    rectangleShape10.Size = new Size(500, 568);
+                    rectangleShape10.Location = new Point(0, 3*568);
+                    rectangleShape11.Location = new Point(0, 3*568);
+                    rectangleShape12.Location = new Point(160, 3*568);
+
+                    label1.Text = "DRIVER";
+                    label2.Text = "SHOTGUN";
+                    label1.Location = new Point(3, 3);
+                    label2.Location = new Point(163, 3);
+
+                    label3.Text = "DRIVER";
+                    label4.Text = "SHOTGUN";
+                    label3.Location = new Point(3, 568 + 3);
+                    label4.Location = new Point(163, 568 + 3);
+
+                    label5.Text = "DRIVER";
+                    label6.Text = "SHOTGUN";
+                    label5.Location = new Point(3, 2 * 568 + 3);
+                    label6.Location = new Point(163, 2 * 568 + 3);
+
+                    label7.Text = "DRIVER";
+                    label8.Text = "SHOTGUN";
+                    label7.Location = new Point(3, 3 * 568 + 3);
+                    label8.Location = new Point(163, 3 * 568 + 3);
+                    break;
+            }
+
+            pnl.Size = new Size(1076, vanwork*568 + 2);
+        }
+       
+        private void FundMode()
+        {
+            this.Text = "New Fundraising List";
+            lblTitle.Text = datefund.ToString("D") + " " + d2d + " Depart: " + depfund.ToString("t") + " Return: " + retfund.ToString("t");
+            lblTimes.Visible = false;
+
+            rectangleShape1.Size = new Size(500, 568);
+            rectangleShape1.Location = new Point(0, 0);
+            rectangleShape2.Location = new Point(0, 0);
+            rectangleShape3.Location = new Point(160, 0);
+
+            rectangleShape4.Size = new Size(500, 568);
+            rectangleShape4.Location = new Point(0, 568);
+            rectangleShape5.Location = new Point(0, 568);
+            rectangleShape6.Location = new Point(160, 568);
+
+            rectangleShape7.Size = new Size(500, 568);
+            rectangleShape7.Location = new Point(0, 2*568);
+            rectangleShape8.Location = new Point(0, 2*568);
+            rectangleShape9.Location = new Point(160, 2*568);
+
+            rectangleShape10.Size = new Size(500, 568);
+            rectangleShape10.Location = new Point(0, 3*568);
+            rectangleShape11.Location = new Point(0, 3*568);
+            rectangleShape12.Location = new Point(160, 3*568);
+
+            label1.Text = "DRIVER";
+            label2.Text = "VAN LEADER";
+            label1.Location = new Point(3, 3);
+            label2.Location = new Point(163, 3);
+
+            label3.Text = "DRIVER";
+            label4.Text = "VAN LEADER";
+            label3.Location = new Point(3, 568 + 3);
+            label4.Location = new Point(163, 568 + 3);
+
+            label5.Text = "DRIVER";
+            label6.Text = "VAN LEADER";
+            label5.Location = new Point(3, 2 * 568 + 3);
+            label6.Location = new Point(163, 2 * 568 + 3);
+
+            label7.Text = "DRIVER";
+            label8.Text = "VAN LEADER";
+            label7.Location = new Point(3, 3 * 568 + 3);
+            label8.Location = new Point(163, 3 * 568 + 3);
+
+            pnl.Size = new Size(1076, 4 * 568 + 2);
+        }
+
+        private void ChoirMode()
+        {
+            this.Text = "New Choir List";
+            lblTitle.Text = titlechoir + " " + datechoir.ToString("D");
+            lblTimes.Text = "Depart: " + depchoir.ToString("t") + " Return: " + retchoir.ToString("t");
+
+            rectangleShape1.Size = new Size(500, 568);
+            rectangleShape1.Location = new Point(0, 0);
+            rectangleShape2.Location = new Point(0, 0);
+            rectangleShape3.Location = new Point(160, 0);
+
+            label1.Text = "DRIVER";
+            label2.Text = "SHOTGUN";
+            label1.Location = new Point(3, 0 + 3);
+            label2.Location = new Point(163, 0 + 3);
+
+            rectangleShape4.Size = new Size(500, 568);
+            rectangleShape4.Location = new Point(0, 568);
+            rectangleShape5.Location = new Point(0, 568);
+            rectangleShape6.Location = new Point(160, 568);
+
+            label3.Text = "DRIVER";
+            label4.Text = "SHOTGUN";
+            label3.Location = new Point(3, 568 + 3);
+            label4.Location = new Point(163, 568 + 3);
+
+            rectangleShape7.Visible = false;
+            rectangleShape8.Visible = false;
+            rectangleShape9.Visible = false;
+            rectangleShape10.Visible = false;
+            rectangleShape11.Visible = false;
+            rectangleShape12.Visible = false;
+
+            label5.Visible = false;
+            label6.Visible = false;
+            label7.Visible = false;
+            label8.Visible = false;
+
+            pnl.Size = new Size(1076, 2*568 + 2);
+        }
+
+        private void BanqMode()
+        {
+            this.Text = "New Banquet List";
+            lblTitle.Text = titlebanq + " " + datebanq.ToString("D");
+            lblTimes.Text = "Starts: " + timebanq.ToString("t") + " Ends: " + endbanq.ToString("t");
+            
+            rectangleShape1.Size = new Size(500, 568);
+            rectangleShape1.Location = new Point(0, 0);
+            rectangleShape2.Location = new Point(0, 0);
+
+            label1.Text = "Pointer";
+            label1.Location = new Point(3, 0 + 3);
+            
+            rectangleShape3.Visible = false;
+            rectangleShape4.Visible = false;
+            rectangleShape5.Visible = false;
+            rectangleShape6.Visible = false;
+            rectangleShape7.Visible = false;
+            rectangleShape8.Visible = false;
+            rectangleShape9.Visible = false;
+            rectangleShape10.Visible = false;
+            rectangleShape11.Visible = false;
+            rectangleShape12.Visible = false;
+
+            label2.Visible = false;
+            label3.Visible = false;
+            label4.Visible = false;
+            label5.Visible = false;
+            label6.Visible = false;
+            label7.Visible = false;
+            label8.Visible = false;
+
+            pnl.Size = new Size(1076, 570);
+        }
+
+        private void LoadAvailableStudents()
+        {
+            if (frmtype == 2) // Loads fundraising approved and non-flagged // And Non-GED if Friday or Saturday
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+                string cmdstr = "SELECT * FROM tbl_BigBoard WHERE tbl_BigBoard.Fundraiser = True AND (tbl_BigBoard.Flagged = False OR (tbl_BigBoard.Flagged = True AND tbl_BigBoard.FlagEndDate < #" + DateTime.Now + "#)) ORDER BY tbl_BigBoard.StudentID;";
+
+                cmd = new OleDbCommand(cmdstr, connect);
+                dr = cmd.ExecuteReader();
+
+                while (dr.Read())
+                {
+                    bool discontinue = false;
+
+                    // If Friday or Saturday, and GED, don't add
+                    if ((Convert.ToBoolean(dr["GED"]) == true) && (depfund.DayOfWeek == DayOfWeek.Friday))
+                    {
+                        discontinue = true;
+                    }
+
+                    if (discontinue == false)
+                    {
+
+                        int idnumber = Convert.ToInt32(dr["StudentID"]);
+
+                        // Check for schedule conflicts!
+                        OleDbConnection cnct = new OleDbConnection(strConnect);
+                        cnct.Open();
+                        string cmdstrX = "SELECT * FROM tbl_Schedule WHERE StudentID = " + idnumber + ";";
+
+                        OleDbCommand command = new OleDbCommand(cmdstrX, cnct);
+                        OleDbDataReader dreader = command.ExecuteReader();
+
+                        while (dreader.Read() && discontinue == false)
+                        {
+                            string[] conflictdates = new string[2];
+
+                            if (dreader.HasRows)
+                            {
+                                conflictdates[0] = (dreader["StartDate"].ToString());
+                                conflictdates[1] = (dreader["EndDate"].ToString());
+
+                                DateTime exsdate = Convert.ToDateTime(conflictdates[0]);
+                                DateTime exedate = Convert.ToDateTime(conflictdates[1]);
+
+                                if ((depfund >= exsdate && depfund < exedate) || (retfund > exsdate && retfund <= exedate) || (depfund < exsdate && retfund > exedate)) // in interval or exceed interval
+                                {
+                                    discontinue = true;
+                                }
+                            }
+                        }
+
+                        dreader.Close();
+                        cnct.Close();
+
+                        if (discontinue == false)
+                        {
+                            // Get PhaseID and DepartmentID
+                            OleDbConnection con = new OleDbConnection(strConnect);
+                            con.Open();
+
+                            string cmdstrID = "SELECT PhaseID FROM tbl_Students WHERE StudentID=" + idnumber + ";";
+                            OleDbCommand cmdID = new OleDbCommand(cmdstrID, con);
+                            int phase = Convert.ToInt32(cmdID.ExecuteScalar());
+
+                            cmdstrID = "SELECT DepartmentID FROM tbl_BigBoard WHERE StudentID=" + idnumber + ";";
+                            cmdID = new OleDbCommand(cmdstrID, con);
+                            int dept = Convert.ToInt32(cmdID.ExecuteScalar());
+
+                            con.Close();
+
+                            AddControlToForm(new StudentTag(idnumber), idnumber, phase, dept, true);
+                           
+                        }
+                    }
+                }
+                dr.Close();
+                connect.Close();
+            }
+
+            else
+            {
+                if (frmtype == 1) // WorkCall
+                {
+                    stime = depwork;
+                    etime = retwork;
+                }
+
+                else if (frmtype == 3) // Choir
+                {
+                    stime = depchoir;
+                    etime = retchoir;
+                }
+
+                else if (frmtype == 4) // Banquet
+                {
+                    stime = timebanq;
+                    etime = endbanq;
+                }
+
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+                string cmdstr = "SELECT * FROM tbl_Students ORDER BY tbl_Students.Last_Name;";
+
+                cmd = new OleDbCommand(cmdstr, connect);
+                dr = cmd.ExecuteReader();
+
+                while (dr.Read())
+                {
+                    int idnumber = Convert.ToInt32(dr["StudentID"]);
+
+                    // First check for schedule conflicts!
+                    OleDbConnection cnct = new OleDbConnection(strConnect);
+                    cnct.Open();
+                    string cmdstrX = "SELECT * FROM tbl_Schedule WHERE StudentID = " + idnumber + ";";
+
+                    OleDbCommand command = new OleDbCommand(cmdstrX, cnct);
+                    OleDbDataReader dreader = command.ExecuteReader();
+
+                    bool discontinue = false;
+
+                    while (dreader.Read() && discontinue == false)
+                    {
+                        string[] conflictdates = new string[2];
+
+                        if (dreader.HasRows)
+                        {
+                            conflictdates[0] = (dreader["StartDate"].ToString());
+                            conflictdates[1] = (dreader["EndDate"].ToString());
+
+                            DateTime exsdate = Convert.ToDateTime(conflictdates[0]);
+                            DateTime exedate = Convert.ToDateTime(conflictdates[1]);
+
+                            if ((stime >= exsdate && stime < exedate) || (etime > exsdate && etime <= exedate) || (stime < exsdate && etime > exedate)) // in interval or exceed interval
+                            {
+                                discontinue = true;
+                            }
+                        }
+                    }
+
+                    dreader.Close();
+                    cnct.Close();
+
+                    if (discontinue == false)
+                    {
+                        // Get PhaseID and DepartmentID
+                        OleDbConnection con = new OleDbConnection(strConnect);
+                        con.Open();
+
+                        string cmdstrID = "SELECT PhaseID FROM tbl_Students WHERE StudentID=" + idnumber + ";";
+                        OleDbCommand cmdID = new OleDbCommand(cmdstrID, con);
+                        int phase = Convert.ToInt32(cmdID.ExecuteScalar());
+
+                        cmdstrID = "SELECT DepartmentID FROM tbl_BigBoard WHERE StudentID=" + idnumber + ";";
+                        cmdID = new OleDbCommand(cmdstrID, con);
+                        int dept = Convert.ToInt32(cmdID.ExecuteScalar());
+
+                        con.Close();
+
+                        AddControlToForm(new StudentTag(idnumber), idnumber, phase, dept, true);
+                       
+                    }
+                }
+                dr.Close();
+                connect.Close();
+            }
+          
+        }
+
+        private void AddControlToForm(Control ctrl, int idnumero, int PhaseID, int DeptID, bool drag)
+        {
+            tags.Add((StudentTag)ctrl);
+            tags[tags.Count - 1].DRAGGABLE = drag;
+            tags[tags.Count - 1].Location = new Point(300, 300);
+
+            pnl.Controls.Add(ctrl);
+            tags[tags.Count - 1].BringToFront();
+
+            tags[tags.Count - 1].STUDENTID = idnumero;
+            tags[tags.Count - 1].PHASEID = PhaseID;
+            tags[tags.Count - 1].DEPARTMENTID = DeptID;
+        }
+
+        private void ResetTags()
+        {
+            int i = 0;
+            int j = 0;
+
+            for (int k = 0; k < tags.Count; k++)
+            {
+                if (tags[k].Visible == true && tags[k].DRAGGABLE == true)
+                {
+                    if ( j * 122 > pnl.Size.Height)
+                    {
+                        if (i < 7)
+                        {
+                            tags[k].Location = new Point(30 + i * 142, j * 122);
+                            i += 1;
+                        }
+
+                        else
+                        {
+                            i = 0;
+                            j += 1;
+                            tags[k].Location = new Point(30 + i * 142, j * 122);
+                            i += 1;
+                        }
+                    }
+                    else
+                    {
+                        if (i < 4)
+                        {
+                            tags[k].Location = new Point(504 + i * 142, j * 122);
+                            i += 1;
+                        }
+
+                        else
+                        {
+                            i = 0;
+                            j += 1;
+
+                            if ( j * 122 > pnl.Size.Height)
+                            {
+                                tags[k].Location = new Point(30 + i * 142, 122*j);
+                                i += 1;
+                            }
+
+                            else
+                            {
+                                tags[k].Location = new Point(504 + i * 142, 122 * j);
+                                i += 1;
+                            }
+                        }
+                    }
+                }
+
+                else
+                {
+                    continue;
+                }
+            }
+
+            if (j * 122 + 122 > pnl.Size.Height)
+            {
+                pnl.Size = new Size(1076, j * 122 + 122);
+            }
+        }
+
+        private void btnReset_Click(object sender, EventArgs e)
+        {
+            Mode(frmtype);
+            ResetTags();
+        }
+
+        private void btnExit_Click(object sender, EventArgs e)
+        {
+            frmFilterList.CkdDepIDs = new List<int>();
+            frmFilterList.CkdPhaseIDs = new List<int>();
+
+            this.Dispose();
+        }
+
+        private void btnAddStudent_Click(object sender, EventArgs e)
+        {
+            frmSearchResults Search = new frmSearchResults();
+            Search.ShowDialog();
+
+            if (Globals.GLOBALINT != 0)
+            {
+                // Get PhaseID and DepartmentID
+                OleDbConnection con = new OleDbConnection(strConnect);
+                con.Open();
+
+                string cmdstrID = "SELECT PhaseID FROM tbl_Students WHERE StudentID=" + Globals.GLOBALINT + ";";
+                OleDbCommand cmdID = new OleDbCommand(cmdstrID, con);
+                int phase = Convert.ToInt32(cmdID.ExecuteScalar());
+
+                cmdstrID = "SELECT DepartmentID FROM tbl_BigBoard WHERE StudentID=" + Globals.GLOBALINT + ";";
+                cmdID = new OleDbCommand(cmdstrID, con);
+                int dept = Convert.ToInt32(cmdID.ExecuteScalar());
+
+                con.Close();
+
+                AddControlToForm(new StudentTag(Globals.GLOBALINT), Globals.GLOBALINT, phase, dept, true);
+               
+                Globals.GLOBALINT = 0;
+            }
+        }
+
+        private void btnPrint_Click(object sender, EventArgs e)
+        {
+            if (frmtype == 1)
+            {
+                string[] Student_NamesA = new string[10];
+                string[] Student_NamesB = new string[10];
+                string[] Student_NamesC = new string[10];
+                string[] Student_NamesD = new string[10];
+               
+                string[] Driver = new string[4];
+                string[] Shotgun = new string[4];
+
+                int a = 0;
+                int b = 0;
+                int c = 0;
+                int d = 0;
+
+                bool EnableSched = true;
+                List<int> studidsA = new List<int>();
+                List<int> studidsB = new List<int>();
+                List<int> studidsC = new List<int>();
+                List<int> studidsD = new List<int>();
+
+                List<Point> locA = new List<Point>();
+                List<Point> locB = new List<Point>();
+                List<Point> locC = new List<Point>();
+                List<Point> locD = new List<Point>();
+
+                int[] drivids = new int[4];
+                int[] shotids = new int[4];
+
+                Point[] locDriv = new Point[4];
+                Point[] locShot = new Point[4];
+
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+
+                for (int i = 0; i < tags.Count; i++)
+                {
+                    if (tags[i].Visible == true)
+                    {
+
+                        string cmdstr2 = "SELECT * FROM tbl_Students WHERE StudentID = " + tags[i].STUDENTID + ";";
+                        cmd = new OleDbCommand(cmdstr2, connect);
+
+                        dr = cmd.ExecuteReader();
+                        string[] name = new string[3];
+
+                        while (dr.Read())
+                        {
+                            name[0] = (dr["First_Name"].ToString());
+                            name[1] = (dr["Last_Name"].ToString());
+                            name[2] = (dr["StudentID"].ToString());
+                        }
+
+                        string first_name = name[0].Trim();
+                        string last_name = name[1].Trim();
+                        int studid = Convert.ToInt32(name[2]);
+
+                        //WorkCall Van A
+                        if (tags[i].Location.X >= rectangleShape1.Location.X - 100 && tags[i].Location.X <= rectangleShape1.Location.X + rectangleShape1.Size.Width && tags[i].Location.Y >= rectangleShape1.Location.Y && tags[i].Location.Y <= rectangleShape1.Location.Y + rectangleShape1.Size.Height)
+                        {
+                            //DriverA
+                            if (tags[i].Location.X >= rectangleShape2.Location.X - 100 && tags[i].Location.X <= rectangleShape2.Location.X + rectangleShape2.Size.Width && tags[i].Location.Y >= rectangleShape2.Location.Y - 100 && tags[i].Location.Y <= rectangleShape2.Location.Y + rectangleShape2.Size.Height)
+                            {
+                                if (Driver[0] == null)
+                                {
+                                    Driver[0] = first_name + " " + last_name;
+                                    drivids[0] = studid;
+                                    locDriv[0] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            //Shotgun A
+                            else if (tags[i].Location.X >= rectangleShape3.Location.X - 100 && tags[i].Location.X <= rectangleShape3.Location.X + rectangleShape3.Size.Width && tags[i].Location.Y >= rectangleShape3.Location.Y && tags[i].Location.Y <= rectangleShape3.Location.Y + rectangleShape3.Size.Height)
+                            {
+                                if (Shotgun[0] == null)
+                                {
+                                    Shotgun[0] = first_name + " " + last_name;
+                                    shotids[0] = studid;
+                                    locShot[0] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            else
+                            {
+                                if (a < 10)
+                                {
+                                    Student_NamesA[a] = first_name + " " + last_name;
+                                    a += 1;
+                                    studidsA.Add(studid);
+                                    locA.Add(tags[i].Location);
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+
+                        if (vanwork > 1)
+                        {
+                            //WorkCall Van B
+                            if (tags[i].Location.X >= rectangleShape4.Location.X - 100 && tags[i].Location.X <= rectangleShape4.Location.X + rectangleShape4.Size.Width && tags[i].Location.Y >= rectangleShape4.Location.Y && tags[i].Location.Y <= rectangleShape4.Location.Y + rectangleShape4.Size.Height)
+                            {
+                                //DriverB
+                                if (tags[i].Location.X >= rectangleShape5.Location.X - 100 && tags[i].Location.X <= rectangleShape5.Location.X + rectangleShape5.Size.Width && tags[i].Location.Y >= rectangleShape5.Location.Y && tags[i].Location.Y <= rectangleShape5.Location.Y + rectangleShape5.Size.Height)
+                                {
+                                    if (Driver[1] == null)
+                                    {
+                                        Driver[1] = first_name + " " + last_name;
+                                        drivids[1] = studid;
+                                        locDriv[1] = tags[i].Location;
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                        if (diapop == DialogResult.OK)
+                                        {
+                                            EnableSched = false;
+                                        }
+                                        continue;
+
+                                    }
+                                }
+
+                                //Shotgun B
+                                else if (tags[i].Location.X >= rectangleShape6.Location.X - 100 && tags[i].Location.X <= rectangleShape6.Location.X + rectangleShape6.Size.Width && tags[i].Location.Y >= rectangleShape6.Location.Y && tags[i].Location.Y <= rectangleShape6.Location.Y + rectangleShape6.Size.Height)
+                                {
+                                    if (Shotgun[1] == null)
+                                    {
+                                        Shotgun[1] = first_name + " " + last_name;
+                                        shotids[1] = studid;
+                                        locShot[1] = tags[i].Location;
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                        if (diapop == DialogResult.OK)
+                                        {
+                                            EnableSched = false;
+                                        }
+                                        continue;
+                                    }
+                                }
+
+                                else
+                                {
+                                    if (b < 10)
+                                    {
+                                        Student_NamesB[b] = first_name + " " + last_name;
+                                        b += 1;
+                                        studidsB.Add(studid);
+                                        locB.Add(tags[i].Location);
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                        if (diapop == DialogResult.OK)
+                                        {
+                                            EnableSched = false;
+                                        }
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            if (vanwork > 2)
+                            {
+                                //WorkCall Van C
+                                if (tags[i].Location.X >= rectangleShape7.Location.X - 100 && tags[i].Location.X <= rectangleShape7.Location.X + rectangleShape7.Size.Width && tags[i].Location.Y >= rectangleShape7.Location.Y && tags[i].Location.Y <= rectangleShape7.Location.Y + rectangleShape7.Size.Height)
+                                {
+                                    //DriverC
+                                    if (tags[i].Location.X >= rectangleShape8.Location.X - 100 && tags[i].Location.X <= rectangleShape8.Location.X + rectangleShape8.Size.Width && tags[i].Location.Y >= rectangleShape8.Location.Y && tags[i].Location.Y <= rectangleShape8.Location.Y + rectangleShape8.Size.Height)
+                                    {
+                                        if (Driver[2] == null)
+                                        {
+                                            Driver[2] = first_name + " " + last_name;
+                                            drivids[2] = studid;
+                                            locDriv[2] = tags[i].Location;
+                                            continue;
+                                        }
+                                        else
+                                        {
+                                            DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                            if (diapop == DialogResult.OK)
+                                            {
+                                                EnableSched = false;
+                                            }
+                                            continue;
+                                        }
+                                    }
+
+                                    //Shotgun C
+                                    else if (tags[i].Location.X >= rectangleShape9.Location.X - 100 && tags[i].Location.X <= rectangleShape9.Location.X + rectangleShape9.Size.Width && tags[i].Location.Y >= rectangleShape9.Location.Y && tags[i].Location.Y <= rectangleShape9.Location.Y + rectangleShape9.Size.Height)
+                                    {
+                                        if (Shotgun[2] == null)
+                                        {
+                                            Shotgun[2] = first_name + " " + last_name;
+                                            shotids[2] = studid;
+                                            locShot[2] = tags[i].Location;
+                                            continue;
+                                        }
+                                        else
+                                        {
+                                            DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                            if (diapop == DialogResult.OK)
+                                            {
+                                                EnableSched = false;
+                                            }
+                                            continue;
+                                        }
+                                    }
+
+                                    else
+                                    {
+                                        if (c < 10)
+                                        {
+                                            Student_NamesC[c] = first_name + " " + last_name;
+                                            c += 1;
+                                            studidsC.Add(studid);
+                                            locC.Add(tags[i].Location);
+                                            continue;
+                                        }
+                                        else
+                                        {
+                                            DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                            if (diapop == DialogResult.OK)
+                                            {
+                                                EnableSched = false;
+                                            }
+                                            continue;
+                                        }
+                                    }
+                                }
+                                if (vanwork > 3)
+                                {
+                                    //Work Call Van D
+                                    if (tags[i].Location.X >= rectangleShape10.Location.X - 100 && tags[i].Location.X <= rectangleShape10.Location.X + rectangleShape10.Size.Width && tags[i].Location.Y >= rectangleShape10.Location.Y && tags[i].Location.Y <= rectangleShape10.Location.Y + rectangleShape10.Size.Height)
+                                    {
+                                        //DriverD
+                                        if (tags[i].Location.X >= rectangleShape11.Location.X - 100 && tags[i].Location.X <= rectangleShape11.Location.X + rectangleShape11.Size.Width && tags[i].Location.Y >= rectangleShape11.Location.Y && tags[i].Location.Y <= rectangleShape11.Location.Y + rectangleShape11.Size.Height)
+                                        {
+                                            if (Driver[3] == null)
+                                            {
+                                                Driver[3] = first_name + " " + last_name;
+                                                drivids[3] = studid;
+                                                locDriv[3] = tags[i].Location;
+                                                continue;
+                                            }
+                                            else
+                                            {
+                                                DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                                if (diapop == DialogResult.OK)
+                                                {
+                                                    EnableSched = false;
+                                                }
+                                                continue;
+                                            }
+                                        }
+
+                                        //Shotgun D
+                                        else if (tags[i].Location.X >= rectangleShape12.Location.X - 100 && tags[i].Location.X <= rectangleShape12.Location.X + rectangleShape12.Size.Width && tags[i].Location.Y >= rectangleShape12.Location.Y && tags[i].Location.Y <= rectangleShape12.Location.Y + rectangleShape12.Size.Height)
+                                        {
+                                            if (Shotgun[3] == null)
+                                            {
+                                                Shotgun[3] = first_name + " " + last_name;
+                                                shotids[3] = studid;
+                                                locShot[3] = tags[i].Location;
+                                                continue;
+                                            }
+                                            else
+                                            {
+                                                DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                                if (diapop == DialogResult.OK)
+                                                {
+                                                    EnableSched = false;
+                                                }
+                                                continue;
+                                            }
+                                        }
+
+                                        else
+                                        {
+                                            if (d < 10)
+                                            {
+                                                Student_NamesD[d] = first_name + " " + last_name;
+                                                d += 1;
+                                                studidsD.Add(studid);
+                                                locD.Add(tags[i].Location);
+                                                continue;
+                                            }
+                                            else
+                                            {
+                                                DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                                if (diapop == DialogResult.OK)
+                                                {
+                                                    EnableSched = false;
+                                                }
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                dr.Close();
+                connect.Close();
+
+                object oMissing = System.Reflection.Missing.Value;
+                object oTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\WorkCall_Template.dotx";
+
+                // Create Bookmarks 
+                // Be sure these Bookmarks exist in .dotx file!!!!!
+                object oWCall = "WorkCall";
+                object oDate = "Date";
+                object oTime = "Time";
+              
+                object oEndOfDoc = "\\endofdoc"; /* \endofdoc is a predefined bookmark */
+
+                //Start Word and create a new document.
+                Word._Application oWord;
+                Word._Document oDoc;
+                oWord = new Word.Application();
+                oWord.Visible = true;
+
+                oDoc = oWord.Documents.Add(ref oTemplate, ref oMissing, ref oMissing, ref oMissing);
+
+                //Title and DateTime
+                oDoc.Bookmarks.get_Item(ref oWCall).Range.Text = titlework;
+                oDoc.Bookmarks.get_Item(ref oDate).Range.Text = datework.ToString("D");
+                oDoc.Bookmarks.get_Item(ref oTime).Range.Text = depwork.ToString("t");
+
+                // WorkCall Van A
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = "DR: " + Driver[0] + "\r\n";
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = "SG: " + Shotgun[0] + "\r\n";
+
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesA[0] + "\r\n";
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesA[1] + "\r\n";
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesA[2] + "\r\n";
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesA[3] + "\r\n";
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesA[4] + "\r\n";
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesA[5] + "\r\n";
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesA[6] + "\r\n";
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesA[7] + "\r\n";
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesA[8] + "\r\n";
+                oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesA[9] + "\r\n";
+                
+                if (vanwork > 1)
+                {
+                    // WorkCall Van B
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = "DR: " + Driver[1] + "\r\n";
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = "SG: " + Shotgun[1] + "\r\n";
+
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesB[0] + "\r\n";
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesB[1] + "\r\n";
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesB[2] + "\r\n";
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesB[3] + "\r\n";
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesB[4] + "\r\n";
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesB[5] + "\r\n";
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesB[6] + "\r\n";
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesB[7] + "\r\n";
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesB[8] + "\r\n";
+                    oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesB[9] + "\r\n";
+                    
+                    if (vanwork > 2)
+                    {
+                        // WorkCall Van C
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = "DR: " + Driver[2] + "\r\n";
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = "SG: " + Shotgun[2] + "\r\n";
+
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesC[0] + "\r\n";
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesC[1] + "\r\n";
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesC[2] + "\r\n";
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesC[3] + "\r\n";
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesC[4] + "\r\n";
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesC[5] + "\r\n";
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesC[6] + "\r\n";
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesC[7] + "\r\n";
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesC[8] + "\r\n";
+                        oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesC[9] + "\r\n";
+                        
+                        if (vanwork > 3)
+                        {
+                            // WorkCall Van D
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = "DR: " + Driver[3] + "\r\n";
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = "SG: " + Shotgun[3] + "\r\n";
+
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesD[0] + "\r\n";
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesD[1] + "\r\n";
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesD[2] + "\r\n";
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesD[3] + "\r\n";
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesD[4] + "\r\n";
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesD[5] + "\r\n";
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesD[6] + "\r\n";
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesD[7] + "\r\n";
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesD[8] + "\r\n";
+                            oDoc.Bookmarks.get_Item(ref oEndOfDoc).Range.Text = Student_NamesD[9] + "\r\n";
+                        }
+                    }
+                }
+                if (EnableSched == true)
+                {
+
+                    DialogResult diasched = MessageBox.Show("Did you review the generated list?\r\nWould you like to insert this event into the student scheduler?", "Submit to Student Scheduler?", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                    if (diasched == DialogResult.Yes)
+                    {// Insert into Schedule
+                        connect.Open();
+
+                        int schedid = 0;
+
+                        for (int k = 0; k < studidsA.Count; k++) //Non-Driver/Shotguns
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+                           
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 1;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studidsA[k];
+                            cmd.Parameters.AddWithValue("@SDate", depwork);
+                            cmd.Parameters.AddWithValue("@Edate", retwork);
+                            cmd.Parameters.AddWithValue("@Note", titlework);
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 1;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locA[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locA[k].Y;
+                            
+                            cmd.ExecuteNonQuery(); 
+                        }
+
+                        for (int k = 0; k < studidsB.Count; k++) //Non-Driver/Shotguns
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 1;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studidsB[k];
+                            cmd.Parameters.AddWithValue("@SDate", depwork);
+                            cmd.Parameters.AddWithValue("@Edate", retwork);
+                            cmd.Parameters.AddWithValue("@Note", titlework);
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 2;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locB[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locB[k].Y;
+
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        for (int k = 0; k < studidsC.Count; k++) //Non-Driver/Shotguns
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 1;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studidsC[k];
+                            cmd.Parameters.AddWithValue("@SDate", depwork);
+                            cmd.Parameters.AddWithValue("@Edate", retwork);
+                            cmd.Parameters.AddWithValue("@Note", titlework);
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 3;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locC[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locC[k].Y;
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        for (int k = 0; k < studidsD.Count; k++) //Non-Driver/Shotguns
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 1;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studidsD[k];
+                            cmd.Parameters.AddWithValue("@SDate", depwork);
+                            cmd.Parameters.AddWithValue("@Edate", retwork);
+                            cmd.Parameters.AddWithValue("@Note", titlework);
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 4;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locD[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locD[k].Y;
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        for (int k = 0; k < 4; k++) //Drivers
+                        {
+                            if (drivids[k] != 0)
+                            {
+                                if (schedid == 0)
+                                {
+                                    try
+                                    {
+                                        string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                        cmd = new OleDbCommand(cmdstr0, connect);
+                                        schedid = (int)cmd.ExecuteScalar();
+
+                                        schedid += 1;
+                                    }
+
+                                    catch (System.InvalidCastException)
+                                    {
+                                        schedid = 1;
+                                    }
+                                }
+
+                                string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                                cmd = new OleDbCommand(cmdstr1, connect);
+
+                                cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                                cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 1;
+                                cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = drivids[k];
+                                cmd.Parameters.AddWithValue("@SDate", depwork);
+                                cmd.Parameters.AddWithValue("@Edate", retwork);
+                                cmd.Parameters.AddWithValue("@Note", titlework);
+                                cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = k + 1;
+                                cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locDriv[k].X;
+                                cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locDriv[k].Y;
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+
+                        for (int k = 0; k < 4; k++) //Shotguns
+                        {
+                            if (shotids[k] != 0)
+                            {
+                                if (schedid == 0)
+                                {
+                                    try
+                                    {
+                                        string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                        cmd = new OleDbCommand(cmdstr0, connect);
+                                        schedid = (int)cmd.ExecuteScalar();
+
+                                        schedid += 1;
+                                    }
+
+                                    catch (System.InvalidCastException)
+                                    {
+                                        schedid = 1;
+                                    }
+                                }
+
+                                string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                                cmd = new OleDbCommand(cmdstr1, connect);
+
+                                cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                                cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 1;
+                                cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = shotids[k];
+                                cmd.Parameters.AddWithValue("@SDate", depwork);
+                                cmd.Parameters.AddWithValue("@Edate", retwork);
+                                cmd.Parameters.AddWithValue("@Note", titlework);
+                                cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = k + 1;
+                                cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locShot[k].X;
+                                cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locShot[k].Y;
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+
+                        connect.Close();
+
+                        DialogResult mhmm = MessageBox.Show("Schedule Entry Successful", "Success!", MessageBoxButtons.OK);
+
+                        if (mhmm == DialogResult.OK)
+                        {
+                        }
+                    }
+
+                    else if (diasched == DialogResult.No)
+                    {
+                    }
+                }
+
+                EnableSched = true; //Reset Value
+            }
+
+            else if (frmtype == 2)
+            {
+                string[] Student_NamesA = new string[10];
+                string[] Student_NamesB = new string[10];
+                string[] Student_NamesC = new string[10];
+                string[] Student_NamesD = new string[10];
+                string[] Drivers = new string[4];
+                string[] VanLeaders = new string[4];
+
+                int a = 0;
+                int b = 0;
+                int c = 0;
+                int d = 0;
+
+                bool EnableSched = true;
+                List<int> studidsA = new List<int>();
+                List<int> studidsB = new List<int>();
+                List<int> studidsC = new List<int>();
+                List<int> studidsD = new List<int>();
+                int[] drivids = new int[4];
+                int[] shotids = new int[4];
+
+                List<Point> locA = new List<Point>();
+                List<Point> locB = new List<Point>();
+                List<Point> locC = new List<Point>();
+                List<Point> locD = new List<Point>();
+
+                Point[] locDriv = new Point[4];
+                Point[] locShot = new Point[4];
+
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+
+                for (int i = 0; i < tags.Count; i++)
+                {
+                    if (tags[i].Visible == true)
+                    {
+
+                        string cmdstr2 = "SELECT * FROM tbl_Students WHERE StudentID = " + tags[i].STUDENTID + ";";
+                        cmd = new OleDbCommand(cmdstr2, connect);
+
+                        dr = cmd.ExecuteReader();
+                        string[] name = new string[3];
+
+                        while (dr.Read())
+                        {
+                            name[0] = (dr["First_Name"].ToString());
+                            name[1] = (dr["Last_Name"].ToString());
+                            name[2] = (dr["StudentID"].ToString());
+                        }
+
+                        string first_name = name[0].Trim();
+                        string last_name = name[1].Trim();
+                        int studid = Convert.ToInt32(name[2]);
+
+                        //Fundraisers Van A
+                        if (tags[i].Location.X >= rectangleShape1.Location.X - 100 && tags[i].Location.X <= rectangleShape1.Location.X + rectangleShape1.Size.Width && tags[i].Location.Y >= rectangleShape1.Location.Y && tags[i].Location.Y <= rectangleShape1.Location.Y + rectangleShape1.Size.Height)
+                        {
+                            //DriverA
+                            if (tags[i].Location.X >= rectangleShape2.Location.X - 100 && tags[i].Location.X <= rectangleShape2.Location.X + rectangleShape2.Size.Width && tags[i].Location.Y >= rectangleShape2.Location.Y - 100 && tags[i].Location.Y <= rectangleShape2.Location.Y + rectangleShape2.Size.Height)
+                            {
+                                if (Drivers[0] == null)
+                                {
+                                    Drivers[0] = first_name + " " + last_name;
+                                    drivids[0] = studid;
+                                    locDriv[0] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.","Warning!",MessageBoxButtons.OK,MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            //VanLeader A
+                            else if (tags[i].Location.X >= rectangleShape3.Location.X - 100 && tags[i].Location.X <= rectangleShape3.Location.X + rectangleShape3.Size.Width && tags[i].Location.Y >= rectangleShape3.Location.Y && tags[i].Location.Y <= rectangleShape3.Location.Y + rectangleShape3.Size.Height)
+                            {
+                                if (VanLeaders[0] == null)
+                                {
+                                    VanLeaders[0] = first_name + " " + last_name;
+                                    shotids[0] = studid;
+                                    locShot[0] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            else
+                            {
+                                if (a < 10)
+                                {
+                                    Student_NamesA[a] = first_name + " " + last_name;
+                                    a += 1;
+                                    studidsA.Add(studid);
+                                    locA.Add(tags[i].Location);
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+                        
+                        //Fundraisers Van B
+                        if (tags[i].Location.X >= rectangleShape4.Location.X - 100 && tags[i].Location.X <= rectangleShape4.Location.X + rectangleShape4.Size.Width && tags[i].Location.Y >= rectangleShape4.Location.Y && tags[i].Location.Y <= rectangleShape4.Location.Y + rectangleShape4.Size.Height)
+                        {
+                            //DriverB
+                            if (tags[i].Location.X >= rectangleShape5.Location.X - 100 && tags[i].Location.X <= rectangleShape5.Location.X + rectangleShape5.Size.Width && tags[i].Location.Y >= rectangleShape5.Location.Y && tags[i].Location.Y <= rectangleShape5.Location.Y + rectangleShape5.Size.Height)
+                            {
+                                if (Drivers[1] == null)
+                                {
+                                    Drivers[1] = first_name + " " + last_name;
+                                    drivids[1] = studid;
+                                    locDriv[1] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+
+                                }
+                            }
+
+                            //VanLeader B
+                            else if (tags[i].Location.X >= rectangleShape6.Location.X - 100 && tags[i].Location.X <= rectangleShape6.Location.X + rectangleShape6.Size.Width && tags[i].Location.Y >= rectangleShape6.Location.Y && tags[i].Location.Y <= rectangleShape6.Location.Y + rectangleShape6.Size.Height)
+                            {
+                                if (VanLeaders[1] == null)
+                                {
+                                    VanLeaders[1] = first_name + " " + last_name;
+                                    shotids[1] = studid;
+                                    locShot[1] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            else
+                            {
+                                if (b < 10)
+                                {
+                                    Student_NamesB[b] = first_name + " " + last_name;
+                                    b += 1;
+                                    studidsB.Add(studid);
+                                    locB.Add(tags[i].Location);
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+
+                        //Fundraisers Van C
+                        if (tags[i].Location.X >= rectangleShape7.Location.X - 100 && tags[i].Location.X <= rectangleShape7.Location.X + rectangleShape7.Size.Width && tags[i].Location.Y >= rectangleShape7.Location.Y && tags[i].Location.Y <= rectangleShape7.Location.Y + rectangleShape7.Size.Height)
+                        {
+                            //DriverC
+                            if (tags[i].Location.X >= rectangleShape8.Location.X - 100 && tags[i].Location.X <= rectangleShape8.Location.X + rectangleShape8.Size.Width && tags[i].Location.Y >= rectangleShape8.Location.Y && tags[i].Location.Y <= rectangleShape8.Location.Y + rectangleShape8.Size.Height)
+                            {
+                                if (Drivers[2] == null)
+                                {
+                                    Drivers[2] = first_name + " " + last_name;
+                                    drivids[2] = studid;
+                                    locDriv[2] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            //VanLeader C
+                            else if (tags[i].Location.X >= rectangleShape9.Location.X - 100 && tags[i].Location.X <= rectangleShape9.Location.X + rectangleShape9.Size.Width && tags[i].Location.Y >= rectangleShape9.Location.Y && tags[i].Location.Y <= rectangleShape9.Location.Y + rectangleShape9.Size.Height)
+                            {
+                                if (VanLeaders[2] == null)
+                                {
+                                    VanLeaders[2] = first_name + " " + last_name;
+                                    shotids[2] = studid;
+                                    locShot[2] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            else
+                            {
+                                if (c < 10)
+                                {
+                                    Student_NamesC[c] = first_name + " " + last_name;
+                                    c += 1;
+                                    studidsC.Add(studid);
+                                    locC.Add(tags[i].Location);
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+
+                        //Fundraisers Van D
+                        if (tags[i].Location.X >= rectangleShape10.Location.X - 100 && tags[i].Location.X <= rectangleShape10.Location.X + rectangleShape10.Size.Width && tags[i].Location.Y >= rectangleShape10.Location.Y && tags[i].Location.Y <= rectangleShape10.Location.Y + rectangleShape10.Size.Height)
+                        {
+                            //DriverD
+                            if (tags[i].Location.X >= rectangleShape11.Location.X - 100 && tags[i].Location.X <= rectangleShape11.Location.X + rectangleShape11.Size.Width && tags[i].Location.Y >= rectangleShape11.Location.Y && tags[i].Location.Y <= rectangleShape11.Location.Y + rectangleShape11.Size.Height)
+                            {
+                                if (Drivers[3] == null)
+                                {
+                                    Drivers[3] = first_name + " " + last_name;
+                                    drivids[3] = studid;
+                                    locDriv[3] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            //VanLeader D
+                            else if (tags[i].Location.X >= rectangleShape12.Location.X - 100 && tags[i].Location.X <= rectangleShape12.Location.X + rectangleShape12.Size.Width && tags[i].Location.Y >= rectangleShape12.Location.Y && tags[i].Location.Y <= rectangleShape12.Location.Y + rectangleShape12.Size.Height)
+                            {
+                                if (VanLeaders[3] == null)
+                                {
+                                    VanLeaders[3] = first_name + " " + last_name;
+                                    shotids[3] = studid;
+                                    locShot[3] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            else
+                            {
+                                if (d < 10)
+                                {
+                                    Student_NamesD[d] = first_name + " " + last_name;
+                                    d += 1;
+                                    studidsD.Add(studid);
+                                    locD.Add(tags[i].Location);
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+                dr.Close();
+                connect.Close();
+
+                object oMissing = System.Reflection.Missing.Value;
+                object oTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\Fundraising_Template.dotx";
+
+
+                // Create Bookmarks 
+                // Be sure these Bookmarks exist in .dotx file!!!!!
+                object oCirTime_1 = "CirTime_1";
+                object oCirTime_2 = "CirTime_2";
+                object oD2DSF_1 = "D2DSF_1";
+                object oD2DSF_2 = "D2DSF_2";
+                object oDate_1 = "Date_1";
+                object oDate_2 = "Date_2";
+                object oDepTime_1 = "DepTime_1";
+                object oDepTime_2 = "DepTime_2";
+                object oRetTime_1 = "RetTime_1";
+                object oRetTime_2 = "RetTime_2";
+                object oDRA = "DRA";
+                object oDRB = "DRB";
+                object oDRC = "DRC";
+                object oDRD = "DRD";
+                object oVLA = "VLA";
+                object oVLB = "VLB";
+                object oVLC = "VLC";
+                object oVLD = "VLD";
+                object oST1A = "ST1A";
+                object oST1B = "ST1B";
+                object oST1C = "ST1C";
+                object oST1D = "ST1D";
+                object oST2A = "ST2A";
+                object oST2B = "ST2B";
+                object oST2C = "ST2C";
+                object oST2D = "ST2D";
+                object oST3A = "ST3A";
+                object oST3B = "ST3B";
+                object oST3C = "ST3C";
+                object oST3D = "ST3D";
+                object oST4A = "ST4A";
+                object oST4B = "ST4B";
+                object oST4C = "ST4C";
+                object oST4D = "ST4D";
+                object oST5A = "ST5A";
+                object oST5B = "ST5B";
+                object oST5C = "ST5C";
+                object oST5D = "ST5D";
+                object oST6A = "ST6A";
+                object oST6B = "ST6B";
+                object oST6C = "ST6C";
+                object oST6D = "ST6D";
+                object oST7A = "ST7A";
+                object oST7B = "ST7B";
+                object oST7C = "ST7C";
+                object oST7D = "ST7D";
+                object oST8A = "ST8A";
+                object oST8B = "ST8B";
+                object oST8C = "ST8C";
+                object oST8D = "ST8D";
+                object oST9A = "ST9A";
+                object oST9B = "ST9B";
+                object oST9C = "ST9C";
+                object oST9D = "ST9D";
+                object oST10A = "ST10A";
+                object oST10B = "ST10B";
+                object oST10C = "ST10C";
+                object oST10D = "ST10D";
+
+                object oEndOfDoc = "\\endofdoc"; /* \endofdoc is a predefined bookmark */
+
+                //Start Word and create a new document.
+                Word._Application oWord;
+                Word._Document oDoc;
+                oWord = new Word.Application();
+                oWord.Visible = true;
+
+                oDoc = oWord.Documents.Add(ref oTemplate, ref oMissing, ref oMissing, ref oMissing);
+
+                // A & B Van 
+                oDoc.Bookmarks.get_Item(ref oD2DSF_1).Range.Text = d2d;
+                oDoc.Bookmarks.get_Item(ref oDate_1).Range.Text = datefund.ToString("D");
+                oDoc.Bookmarks.get_Item(ref oCirTime_1).Range.Text = (depfund.Subtract(new TimeSpan(0, 15, 0))).ToString("t");
+                oDoc.Bookmarks.get_Item(ref oDepTime_1).Range.Text = depfund.ToString("t");
+                oDoc.Bookmarks.get_Item(ref oRetTime_1).Range.Text = retfund.ToString("t");
+
+                // A Van
+                oDoc.Bookmarks.get_Item(ref oDRA).Range.Text = Drivers[0];
+                oDoc.Bookmarks.get_Item(ref oVLA).Range.Text = VanLeaders[0];
+
+                oDoc.Bookmarks.get_Item(ref oST1A).Range.Text = Student_NamesA[0];
+                oDoc.Bookmarks.get_Item(ref oST2A).Range.Text = Student_NamesA[1];
+                oDoc.Bookmarks.get_Item(ref oST3A).Range.Text = Student_NamesA[2];
+                oDoc.Bookmarks.get_Item(ref oST4A).Range.Text = Student_NamesA[3];
+                oDoc.Bookmarks.get_Item(ref oST5A).Range.Text = Student_NamesA[4];
+                oDoc.Bookmarks.get_Item(ref oST6A).Range.Text = Student_NamesA[5];
+                oDoc.Bookmarks.get_Item(ref oST7A).Range.Text = Student_NamesA[6];
+                oDoc.Bookmarks.get_Item(ref oST8A).Range.Text = Student_NamesA[7];
+                oDoc.Bookmarks.get_Item(ref oST9A).Range.Text = Student_NamesA[8];
+                oDoc.Bookmarks.get_Item(ref oST10A).Range.Text = Student_NamesA[9];
+
+                // B Van
+                oDoc.Bookmarks.get_Item(ref oDRB).Range.Text = Drivers[1];
+                oDoc.Bookmarks.get_Item(ref oVLB).Range.Text = VanLeaders[1];
+
+                oDoc.Bookmarks.get_Item(ref oST1B).Range.Text = Student_NamesB[0];
+                oDoc.Bookmarks.get_Item(ref oST2B).Range.Text = Student_NamesB[1];
+                oDoc.Bookmarks.get_Item(ref oST3B).Range.Text = Student_NamesB[2];
+                oDoc.Bookmarks.get_Item(ref oST4B).Range.Text = Student_NamesB[3];
+                oDoc.Bookmarks.get_Item(ref oST5B).Range.Text = Student_NamesB[4];
+                oDoc.Bookmarks.get_Item(ref oST6B).Range.Text = Student_NamesB[5];
+                oDoc.Bookmarks.get_Item(ref oST7B).Range.Text = Student_NamesB[6];
+                oDoc.Bookmarks.get_Item(ref oST8B).Range.Text = Student_NamesB[7];
+                oDoc.Bookmarks.get_Item(ref oST9B).Range.Text = Student_NamesB[8];
+                oDoc.Bookmarks.get_Item(ref oST10B).Range.Text = Student_NamesB[9];
+
+                // C & D Van
+                oDoc.Bookmarks.get_Item(ref oD2DSF_2).Range.Text = d2d;
+                oDoc.Bookmarks.get_Item(ref oDate_2).Range.Text = datefund.ToString("D");
+                oDoc.Bookmarks.get_Item(ref oCirTime_2).Range.Text = (depfund.Subtract(new TimeSpan(0, 15, 0))).ToString("t");
+                oDoc.Bookmarks.get_Item(ref oDepTime_2).Range.Text = depfund.ToString("t");
+                oDoc.Bookmarks.get_Item(ref oRetTime_2).Range.Text = retfund.ToString("t");
+
+                // C Van
+                oDoc.Bookmarks.get_Item(ref oDRC).Range.Text = Drivers[2];
+                oDoc.Bookmarks.get_Item(ref oVLC).Range.Text = VanLeaders[2];
+
+                oDoc.Bookmarks.get_Item(ref oST1C).Range.Text = Student_NamesC[0];
+                oDoc.Bookmarks.get_Item(ref oST2C).Range.Text = Student_NamesC[1];
+                oDoc.Bookmarks.get_Item(ref oST3C).Range.Text = Student_NamesC[2];
+                oDoc.Bookmarks.get_Item(ref oST4C).Range.Text = Student_NamesC[3];
+                oDoc.Bookmarks.get_Item(ref oST5C).Range.Text = Student_NamesC[4];
+                oDoc.Bookmarks.get_Item(ref oST6C).Range.Text = Student_NamesC[5];
+                oDoc.Bookmarks.get_Item(ref oST7C).Range.Text = Student_NamesC[6];
+                oDoc.Bookmarks.get_Item(ref oST8C).Range.Text = Student_NamesC[7];
+                oDoc.Bookmarks.get_Item(ref oST9C).Range.Text = Student_NamesC[8];
+                oDoc.Bookmarks.get_Item(ref oST10C).Range.Text = Student_NamesC[9];
+
+                // D Van
+                oDoc.Bookmarks.get_Item(ref oDRD).Range.Text = Drivers[3];
+                oDoc.Bookmarks.get_Item(ref oVLD).Range.Text = VanLeaders[3];
+
+                oDoc.Bookmarks.get_Item(ref oST1D).Range.Text = Student_NamesD[0];
+                oDoc.Bookmarks.get_Item(ref oST2D).Range.Text = Student_NamesD[1];
+                oDoc.Bookmarks.get_Item(ref oST3D).Range.Text = Student_NamesD[2];
+                oDoc.Bookmarks.get_Item(ref oST4D).Range.Text = Student_NamesD[3];
+                oDoc.Bookmarks.get_Item(ref oST5D).Range.Text = Student_NamesD[4];
+                oDoc.Bookmarks.get_Item(ref oST6D).Range.Text = Student_NamesD[5];
+                oDoc.Bookmarks.get_Item(ref oST7D).Range.Text = Student_NamesD[6];
+                oDoc.Bookmarks.get_Item(ref oST8D).Range.Text = Student_NamesD[7];
+                oDoc.Bookmarks.get_Item(ref oST9D).Range.Text = Student_NamesD[8];
+                oDoc.Bookmarks.get_Item(ref oST10D).Range.Text = Student_NamesD[9];
+
+                if (EnableSched == true)
+                {
+
+                    DialogResult diasched = MessageBox.Show("Did you review the generated list?\r\nWould you like to insert this event into the student scheduler?", "Submit to Student Scheduler?", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                    if (diasched == DialogResult.Yes)
+                    {// Insert into Schedule
+                        connect.Open();
+
+                        int schedid = 0;
+
+                        for (int k = 0; k < studidsA.Count; k++) // Fundraisers
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 2;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studidsA[k];
+                            cmd.Parameters.AddWithValue("@SDate", depfund);
+                            cmd.Parameters.AddWithValue("@Edate", retfund);
+                            cmd.Parameters.AddWithValue("@Note", "Fundraising");
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 1;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locA[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locA[k].Y;
+                            
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        for (int k = 0; k < studidsB.Count; k++) // Fundraisers
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 2;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studidsB[k];
+                            cmd.Parameters.AddWithValue("@SDate", depfund);
+                            cmd.Parameters.AddWithValue("@Edate", retfund);
+                            cmd.Parameters.AddWithValue("@Note", "Fundraising");
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 2;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locB[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locB[k].Y;
+                            
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        for (int k = 0; k < studidsC.Count; k++) // Fundraisers
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 2;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studidsC[k];
+                            cmd.Parameters.AddWithValue("@SDate", depfund);
+                            cmd.Parameters.AddWithValue("@Edate", retfund);
+                            cmd.Parameters.AddWithValue("@Note", "Fundraising");
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 3;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locC[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locC[k].Y;
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        for (int k = 0; k < studidsD.Count; k++) // Fundraisers
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 2;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studidsD[k];
+                            cmd.Parameters.AddWithValue("@SDate", depfund);
+                            cmd.Parameters.AddWithValue("@Edate", retfund);
+                            cmd.Parameters.AddWithValue("@Note", "Fundraising");
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 4;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locD[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locD[k].Y;
+
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        for (int k = 0; k < 4; k++) // Drivers
+                        {
+                            if (drivids[k] != 0)
+                            {
+                                if (schedid == 0)
+                                {
+                                    try
+                                    {
+                                        string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                        cmd = new OleDbCommand(cmdstr0, connect);
+                                        schedid = (int)cmd.ExecuteScalar();
+
+                                        schedid += 1;
+                                    }
+
+                                    catch (System.InvalidCastException)
+                                    {
+                                        schedid = 1;
+                                    }
+                                }
+
+                                string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                                cmd = new OleDbCommand(cmdstr1, connect);
+
+                                cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                                cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 2;
+                                cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = drivids[k];
+                                cmd.Parameters.AddWithValue("@SDate", depfund);
+                                cmd.Parameters.AddWithValue("@Edate", retfund);
+                                cmd.Parameters.AddWithValue("@Note", "Driver - Fundraising");
+                                cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = k + 1;
+                                cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locDriv[k].X;
+                                cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locDriv[k].Y;
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+
+                        for (int k = 0; k < 4; k++)
+                        {
+                            if (shotids[k] != 0)
+                            {
+                                if (schedid == 0)
+                                {
+                                    try
+                                    {
+                                        string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                        cmd = new OleDbCommand(cmdstr0, connect);
+                                        schedid = (int)cmd.ExecuteScalar();
+
+                                        schedid += 1;
+                                    }
+
+                                    catch (System.InvalidCastException)
+                                    {
+                                        schedid = 1;
+                                    }
+                                }
+
+                                string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                                cmd = new OleDbCommand(cmdstr1, connect);
+
+                                cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                                cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 2;
+                                cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = shotids[k];
+                                cmd.Parameters.AddWithValue("@SDate", depfund);
+                                cmd.Parameters.AddWithValue("@Edate", retfund);
+                                cmd.Parameters.AddWithValue("@Note", "Van Leading - Fundraising");
+                                cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = k + 1;
+                                cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locShot[k].X;
+                                cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locShot[k].Y;
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+
+                        connect.Close();
+
+                        DialogResult mhmm = MessageBox.Show("Schedule Entry Successful","Success!",MessageBoxButtons.OK);
+
+                        if (mhmm == DialogResult.OK)
+                        {
+                        }
+                    }
+
+                    else if (diasched == DialogResult.No)
+                    {
+                    }
+                }
+
+                EnableSched = true; //Reset Value
+            }
+
+            else if (frmtype == 3)
+            {
+                string[] Student_NamesA = new string[10];
+                string[] Student_NamesB = new string[10];
+                string[] Drivers = new string[2];
+                string[] Shotguns = new string[2];
+
+                int a = 0;
+                int b = 0;
+
+                bool EnableSched = true;
+                List<int> studidsA = new List<int>();
+                List<int> studidsB = new List<int>();
+                int[] drivids = new int[2];
+                int[] shotids = new int[2];
+
+                List<Point> locA = new List<Point>();
+                List<Point> locB = new List<Point>();
+                
+                Point[] locDriv = new Point[2];
+                Point[] locShot = new Point[2];
+
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+
+                for (int i = 0; i < tags.Count; i++)
+                {
+                    if (tags[i].Visible == true)
+                    {
+
+                        string cmdstr2 = "SELECT * FROM tbl_Students WHERE StudentID = " + tags[i].STUDENTID + ";";
+                        cmd = new OleDbCommand(cmdstr2, connect);
+
+                        dr = cmd.ExecuteReader();
+                        string[] name = new string[3];
+
+                        while (dr.Read())
+                        {
+                            name[0] = (dr["First_Name"].ToString());
+                            name[1] = (dr["Last_Name"].ToString());
+                            name[2] = (dr["StudentID"].ToString());
+                        }
+
+                        string first_name = name[0].Trim();
+                        string last_name = name[1].Trim();
+                        int studid = Convert.ToInt32(name[2]);
+
+                        //Choir Van A
+                        if (tags[i].Location.X >= rectangleShape1.Location.X - 100 && tags[i].Location.X <= rectangleShape1.Location.X + rectangleShape1.Size.Width && tags[i].Location.Y >= rectangleShape1.Location.Y && tags[i].Location.Y <= rectangleShape1.Location.Y + rectangleShape1.Size.Height)
+                        {
+                            //Driver A
+                            if (tags[i].Location.X >= rectangleShape2.Location.X - 100 && tags[i].Location.X <= rectangleShape2.Location.X + rectangleShape2.Size.Width && tags[i].Location.Y >= rectangleShape2.Location.Y - 100 && tags[i].Location.Y <= rectangleShape2.Location.Y + rectangleShape2.Size.Height)
+                            {
+                                if (Drivers[0] == null)
+                                {
+                                    Drivers[0] = first_name + " " + last_name;
+                                    drivids[0] = studid;
+                                    locDriv[0] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            //Shotgun A
+                            else if (tags[i].Location.X >= rectangleShape3.Location.X - 100 && tags[i].Location.X <= rectangleShape3.Location.X + rectangleShape3.Size.Width && tags[i].Location.Y >= rectangleShape3.Location.Y && tags[i].Location.Y <= rectangleShape3.Location.Y + rectangleShape3.Size.Height)
+                            {
+                                if (Shotguns[0] == null)
+                                {
+                                    Shotguns[0] = first_name + " " + last_name;
+                                    shotids[0] = studid;
+                                    locShot[0] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            else // Everyone else in Van A
+                            {
+                                if (a < 10)
+                                {
+                                    Student_NamesA[a] = first_name + " " + last_name;
+                                    a += 1;
+                                    studidsA.Add(studid);
+                                    locA.Add(tags[i].Location);
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+
+                        //Choir Van B
+                        if (tags[i].Location.X >= rectangleShape4.Location.X  && tags[i].Location.X <= rectangleShape4.Location.X + rectangleShape4.Size.Width && tags[i].Location.Y >= rectangleShape4.Location.Y && tags[i].Location.Y <= rectangleShape4.Location.Y + rectangleShape4.Size.Height)
+                        {
+                            //Driver B
+                            if (tags[i].Location.X >= rectangleShape5.Location.X  && tags[i].Location.X <= rectangleShape5.Location.X + rectangleShape5.Size.Width && tags[i].Location.Y >= rectangleShape5.Location.Y && tags[i].Location.Y <= rectangleShape5.Location.Y + rectangleShape5.Size.Height)
+                            {
+                                if (Drivers[1] == null)
+                                {
+                                    Drivers[1] = first_name + " " + last_name;
+                                    drivids[1] = studid;
+                                    locDriv[1] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            //Shotgun B
+                            else if (tags[i].Location.X >= rectangleShape6.Location.X && tags[i].Location.X <= rectangleShape6.Location.X + rectangleShape6.Size.Width && tags[i].Location.Y >= rectangleShape6.Location.Y && tags[i].Location.Y <= rectangleShape6.Location.Y + rectangleShape6.Size.Height)
+                            {
+                                if (Shotguns[1] == null)
+                                {
+                                    Shotguns[1] = first_name + " " + last_name;
+                                    shotids[1] = studid;
+                                    locShot[1] = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            else // Everyone else in Van B
+                            {
+                                if (b < 10)
+                                {
+                                    Student_NamesB[b] = first_name + " " + last_name;
+                                    b += 1;
+                                    studidsB.Add(studid);
+                                    locB.Add(tags[i].Location);
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+                dr.Close();
+                connect.Close();
+
+                object oMissing = System.Reflection.Missing.Value;
+                object oTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\Choir_Template.dotx";
+
+                // Create Bookmarks 
+                // Be sure these Bookmarks exist in .dotx file!!!!!
+                object ochurch = "church";
+                object odate = "date";
+                object oaddress = "address";
+                object obreakfast = "breakfast";
+                object ocircle = "circle";
+                object odepart = "depart";
+                object oservice = "service";
+                object odriv1 = "dr1";
+                object odriv2 = "dr2";
+                object osg1 = "sg1";
+                object osg2 = "sg2";
+                object ost1 = "st1";
+                object ost2 = "st2";
+                object ost3 = "st3";
+                object ost4 = "st4";
+                object ost5 = "st5";
+                object ost6 = "st6";
+                object ost7 = "st7";
+                object ost8 = "st8";
+                object ost9 = "st9";
+                object ost10 = "st10";
+                object ost11 = "st11";
+                object ost12 = "st12";
+                object ost13 = "st13";
+                object ost14 = "st14";
+                object ost15 = "st15";
+                object ost16 = "st16";
+                object ost17 = "st17";
+                object ost18 = "st18";
+                object ost19 = "st19";
+                object ost20 = "st20";
+
+                object oEndOfDoc = "\\endofdoc"; /* \endofdoc is a predefined bookmark */
+
+                //Start Word and create a new document.
+                Word._Application oWord;
+                Word._Document oDoc;
+                oWord = new Word.Application();
+                oWord.Visible = true;
+
+                oDoc = oWord.Documents.Add(ref oTemplate, ref oMissing, ref oMissing, ref oMissing);
+
+                //Title and DateTime
+                oDoc.Bookmarks.get_Item(ref ochurch).Range.Text = titlechoir;
+                oDoc.Bookmarks.get_Item(ref odate).Range.Text = datechoir.ToString("D");
+                oDoc.Bookmarks.get_Item(ref oaddress).Range.Text = addresschoir;
+                oDoc.Bookmarks.get_Item(ref obreakfast).Range.Text = breakchoir.ToString("t");
+                oDoc.Bookmarks.get_Item(ref ocircle).Range.Text = (depchoir.Subtract(new TimeSpan(0, 15, 0))).ToString("t");
+                oDoc.Bookmarks.get_Item(ref odepart).Range.Text = depchoir.ToString("t");
+                oDoc.Bookmarks.get_Item(ref oservice).Range.Text = startchoir.ToString("t");
+
+                // Choir Van 1
+                oDoc.Bookmarks.get_Item(ref odriv1).Range.Text = Drivers[0];
+                oDoc.Bookmarks.get_Item(ref osg1).Range.Text = Shotguns[0];
+
+                oDoc.Bookmarks.get_Item(ref ost1).Range.Text = Student_NamesA[0];
+                oDoc.Bookmarks.get_Item(ref ost2).Range.Text = Student_NamesA[1];
+                oDoc.Bookmarks.get_Item(ref ost3).Range.Text = Student_NamesA[2];
+                oDoc.Bookmarks.get_Item(ref ost4).Range.Text = Student_NamesA[3];
+                oDoc.Bookmarks.get_Item(ref ost5).Range.Text = Student_NamesA[4];
+                oDoc.Bookmarks.get_Item(ref ost6).Range.Text = Student_NamesA[5];
+                oDoc.Bookmarks.get_Item(ref ost7).Range.Text = Student_NamesA[6];
+                oDoc.Bookmarks.get_Item(ref ost8).Range.Text = Student_NamesA[7];
+                oDoc.Bookmarks.get_Item(ref ost9).Range.Text = Student_NamesA[8];
+                oDoc.Bookmarks.get_Item(ref ost10).Range.Text = Student_NamesA[9];
+
+                // Choir Van 2
+                oDoc.Bookmarks.get_Item(ref odriv2).Range.Text = Drivers[1];
+                oDoc.Bookmarks.get_Item(ref osg2).Range.Text = Shotguns[1];
+
+                oDoc.Bookmarks.get_Item(ref ost11).Range.Text = Student_NamesB[0];
+                oDoc.Bookmarks.get_Item(ref ost12).Range.Text = Student_NamesB[1];
+                oDoc.Bookmarks.get_Item(ref ost13).Range.Text = Student_NamesB[2];
+                oDoc.Bookmarks.get_Item(ref ost14).Range.Text = Student_NamesB[3];
+                oDoc.Bookmarks.get_Item(ref ost15).Range.Text = Student_NamesB[4];
+                oDoc.Bookmarks.get_Item(ref ost16).Range.Text = Student_NamesB[5];
+                oDoc.Bookmarks.get_Item(ref ost17).Range.Text = Student_NamesB[6];
+                oDoc.Bookmarks.get_Item(ref ost18).Range.Text = Student_NamesB[7];
+                oDoc.Bookmarks.get_Item(ref ost19).Range.Text = Student_NamesB[8];
+                oDoc.Bookmarks.get_Item(ref ost20).Range.Text = Student_NamesB[9];
+
+                if (EnableSched == true)
+                {
+
+                    DialogResult diasched = MessageBox.Show("Did you review the generated list?\r\nWould you like to insert this event into the student scheduler?", "Submit to Student Scheduler?", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                    if (diasched == DialogResult.Yes)
+                    {// Insert into Schedule
+                        connect.Open();
+
+                        int schedid = 0;
+
+                        for (int k = 0; k < studidsA.Count; k++) // Students
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 3;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studidsA[k];
+                            cmd.Parameters.AddWithValue("@SDate", depchoir);
+                            cmd.Parameters.AddWithValue("@Edate", retchoir);
+                            cmd.Parameters.AddWithValue("@Note", titlechoir);
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 1;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locA[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locA[k].Y;
+
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        for (int k = 0; k < studidsB.Count; k++) // Students
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 3;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studidsB[k];
+                            cmd.Parameters.AddWithValue("@SDate", depchoir);
+                            cmd.Parameters.AddWithValue("@Edate", retchoir);
+                            cmd.Parameters.AddWithValue("@Note", titlechoir);
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 2;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locB[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locB[k].Y;
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        for (int k = 0; k < 2; k++) // Drivers
+                        {
+                            if (drivids[k] != 0)
+                            {
+                                if (schedid == 0)
+                                {
+                                    try
+                                    {
+                                        string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                        cmd = new OleDbCommand(cmdstr0, connect);
+                                        schedid = (int)cmd.ExecuteScalar();
+
+                                        schedid += 1;
+                                    }
+
+                                    catch (System.InvalidCastException)
+                                    {
+                                        schedid = 1;
+                                    }
+                                }
+
+                                string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                                cmd = new OleDbCommand(cmdstr1, connect);
+
+                                cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                                cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 3;
+                                cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = drivids[k];
+                                cmd.Parameters.AddWithValue("@SDate", depchoir);
+                                cmd.Parameters.AddWithValue("@Edate", retchoir);
+                                cmd.Parameters.AddWithValue("@Note", titlechoir);
+                                cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = k + 1;
+                                cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locDriv[k].X;
+                                cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locDriv[k].Y;
+                                cmd.ExecuteNonQuery();
+                                
+                            }
+                        }
+
+                        for (int k = 0; k < 2; k++) // Shotguns
+                        {
+                            if (shotids[k] != 0)
+                            {
+                                if (schedid == 0)
+                                {
+                                    try
+                                    {
+                                        string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                        cmd = new OleDbCommand(cmdstr0, connect);
+                                        schedid = (int)cmd.ExecuteScalar();
+
+                                        schedid += 1;
+                                    }
+
+                                    catch (System.InvalidCastException)
+                                    {
+                                        schedid = 1;
+                                    }
+                                }
+
+                                string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                                cmd = new OleDbCommand(cmdstr1, connect);
+
+                                cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                                cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 3;
+                                cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = shotids[k];
+                                cmd.Parameters.AddWithValue("@SDate", depchoir);
+                                cmd.Parameters.AddWithValue("@Edate", retchoir);
+                                cmd.Parameters.AddWithValue("@Note", titlechoir);
+                                cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = k + 1;
+                                cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locShot[k].X;
+                                cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locShot[k].Y;
+
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+                        connect.Close();
+
+                        DialogResult mhmm = MessageBox.Show("Schedule Entry Successful", "Success!", MessageBoxButtons.OK);
+
+                        if (mhmm == DialogResult.OK)
+                        {
+                        }
+                    }
+
+                    else if (diasched == DialogResult.No)
+                    {
+                    }
+                }
+
+                EnableSched = true; //Reset Value
+            }
+
+            else if (frmtype == 4)
+            {
+                string[] Student_Names = new string[10];
+                string Pointer = "";
+                
+                int a = 0;
+
+                bool EnableSched = true;
+                List<int> studids = new List<int>();
+                int pointid = 0;
+
+                List<Point> locstuds = new List<Point>();
+
+                Point locpoint = new Point();
+
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+
+                for (int i = 0; i < tags.Count; i++)
+                {
+                    if (tags[i].Visible == true)
+                    {
+
+                        string cmdstr2 = "SELECT * FROM tbl_Students WHERE StudentID = " + tags[i].STUDENTID + ";";
+                        cmd = new OleDbCommand(cmdstr2, connect);
+
+                        dr = cmd.ExecuteReader();
+                        string[] name = new string[3];
+
+                        while (dr.Read())
+                        {
+                            name[0] = (dr["First_Name"].ToString());
+                            name[1] = (dr["Last_Name"].ToString());
+                            name[2] = (dr["StudentID"].ToString());
+                        }
+
+                        string first_name = name[0].Trim();
+                        string last_name = name[1].Trim();
+                        int studid = Convert.ToInt32(name[2]);
+
+                        //WorkCall Van
+                        if (tags[i].Location.X >= rectangleShape1.Location.X - 100 && tags[i].Location.X <= rectangleShape1.Location.X + rectangleShape1.Size.Width && tags[i].Location.Y >= rectangleShape1.Location.Y && tags[i].Location.Y <= rectangleShape1.Location.Y + rectangleShape1.Size.Height)
+                        {
+                            //Pointer
+                            if (tags[i].Location.X >= rectangleShape2.Location.X - 100 && tags[i].Location.X <= rectangleShape2.Location.X + rectangleShape2.Size.Width && tags[i].Location.Y >= rectangleShape2.Location.Y - 100 && tags[i].Location.Y <= rectangleShape2.Location.Y + rectangleShape2.Size.Height)
+                            {
+                                if (Pointer == "")
+                                {
+                                    Pointer = first_name + " " + last_name;
+                                    pointid = studid;
+                                    locpoint = tags[i].Location;
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            else // Everyone else
+                            {
+                                if (a < 10)
+                                {
+                                    Student_Names[a] = first_name + " " + last_name;
+                                    a += 1;
+                                    studids.Add(studid);
+                                    locstuds.Add(tags[i].Location);
+                                    continue;
+                                }
+                                else
+                                {
+                                    DialogResult diapop = MessageBox.Show("There are too many students in a region \r\nYou may want to review the list and make revisions.", "Warning!", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                                    if (diapop == DialogResult.OK)
+                                    {
+                                        EnableSched = false;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+                dr.Close();
+                connect.Close();
+
+                object oMissing = System.Reflection.Missing.Value;
+                object oTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\Banquet_Template.dotx";
+
+               
+                // Create Bookmarks 
+                // Be sure these Bookmarks exist in .dotx file!!!!!
+                object oTitle = "Title";
+                object oDate = "Date";
+                object oTime = "Time";
+                object oPointer = "Pointer";
+                object oServer1 = "Server1";
+                object oServer2 = "Server2";
+                object oServer3 = "Server3";
+                object oServer4 = "Server4";
+                object oServer5 = "Server5";
+                object oServer6 = "Server6";
+                object oServer7 = "Server7";
+                object oServer8 = "Server8";
+                object oServer9 = "Server9";
+                object oServer10 = "Server10";
+
+                object oEndOfDoc = "\\endofdoc"; /* \endofdoc is a predefined bookmark */
+
+                //Start Word and create a new document.
+                Word._Application oWord;
+                Word._Document oDoc;
+                oWord = new Word.Application();
+                oWord.Visible = true;
+
+                oDoc = oWord.Documents.Add(ref oTemplate, ref oMissing, ref oMissing, ref oMissing);
+
+                //Title and DateTime
+                oDoc.Bookmarks.get_Item(ref oTitle).Range.Text = titlebanq;
+                oDoc.Bookmarks.get_Item(ref oDate).Range.Text = datebanq.ToString("D");
+                oDoc.Bookmarks.get_Item(ref oTime).Range.Text = timebanq.ToString("t");
+
+                // Servers...
+                oDoc.Bookmarks.get_Item(ref oPointer).Range.Text = Pointer;
+                oDoc.Bookmarks.get_Item(ref oServer1).Range.Text = Student_Names[0];
+                oDoc.Bookmarks.get_Item(ref oServer2).Range.Text = Student_Names[1];
+                oDoc.Bookmarks.get_Item(ref oServer3).Range.Text = Student_Names[2];
+                oDoc.Bookmarks.get_Item(ref oServer4).Range.Text = Student_Names[3];
+                oDoc.Bookmarks.get_Item(ref oServer5).Range.Text = Student_Names[4];
+                oDoc.Bookmarks.get_Item(ref oServer6).Range.Text = Student_Names[5];
+                oDoc.Bookmarks.get_Item(ref oServer7).Range.Text = Student_Names[6];
+                oDoc.Bookmarks.get_Item(ref oServer8).Range.Text = Student_Names[7];
+                oDoc.Bookmarks.get_Item(ref oServer9).Range.Text = Student_Names[8];
+                oDoc.Bookmarks.get_Item(ref oServer10).Range.Text = Student_Names[9];
+
+                if (EnableSched == true)
+                {
+
+                    DialogResult diasched = MessageBox.Show("Did you review the generated list?\r\nWould you like to insert this event into the student scheduler?", "Submit to Student Scheduler?", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                    if (diasched == DialogResult.Yes)
+                    {// Insert into Schedule
+                        connect.Open();
+
+                        int schedid = 0;
+
+                        for (int k = 0; k < studids.Count; k++) //Students
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 4;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studids[k];
+                            cmd.Parameters.AddWithValue("@SDate", timebanq);
+                            cmd.Parameters.AddWithValue("@Edate", endbanq);
+                            cmd.Parameters.AddWithValue("@Note", timebanq);
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 1;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locstuds[k].X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locstuds[k].Y;
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        if (pointid != 0) //Pointer
+                        {
+                            if (schedid == 0)
+                            {
+                                try
+                                {
+                                    string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                                    cmd = new OleDbCommand(cmdstr0, connect);
+                                    schedid = (int)cmd.ExecuteScalar();
+
+                                    schedid += 1;
+                                }
+
+                                catch (System.InvalidCastException)
+                                {
+                                    schedid = 1;
+                                }
+                            }
+
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [Type], [StudentID], [StartDate], [EndDate], [Note], [Van], [x_pos], [y_pos]) VALUES (@ScheduleID, @Type, @StudentID, @SDate, @EDate, @Note, @Van, @x_pos, @y_pos)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@Type", OleDbType.Integer).Value = 4;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = pointid;
+                            cmd.Parameters.AddWithValue("@SDate", timebanq);
+                            cmd.Parameters.AddWithValue("@Edate", endbanq);
+                            cmd.Parameters.AddWithValue("@Note", titlebanq);
+                            cmd.Parameters.AddWithValue("@Van", OleDbType.Integer).Value = 1;
+                            cmd.Parameters.AddWithValue("@x_pos", OleDbType.Integer).Value = locpoint.X;
+                            cmd.Parameters.AddWithValue("@y_pos", OleDbType.Integer).Value = locpoint.Y;
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        connect.Close();
+
+                        DialogResult mhmm = MessageBox.Show("Schedule Entry Successful", "Success!", MessageBoxButtons.OK);
+
+                        if (mhmm == DialogResult.OK)
+                        {
+                        }
+                    }
+
+                    else if (diasched == DialogResult.No)
+                    {
+                    }
+                }
+
+                EnableSched = true; //Reset Value
+            }
+        }
+
+        private void btnFilter_Click(object sender, EventArgs e)
+        {
+            frmFilterList filter = new frmFilterList();
+            DialogResult diafilter = filter.ShowDialog();
+
+            if(diafilter == DialogResult.OK)
+            {
+                VisPhaseIDs = frmFilterList.CkdPhaseIDs;
+                VisDepIDs = frmFilterList.CkdDepIDs;
+
+                FilterTags();
+                Mode(frmtype);
+                ResetTags();
+            }
+        }
+
+        private void FilterTags()
+        {
+            for (int m = 0; m < tags.Count; m++)
+            {
+                if (tags[m].DRAGGABLE == true)
+                {
+                    if (VisDepIDs.Contains(tags[m].DEPARTMENTID) == true && VisPhaseIDs.Contains(tags[m].PHASEID) == true)
+                    {
+                        tags[m].Visible = true;
+                    }
+
+                    else
+                    {
+                        tags[m].Visible = false;
+                    }
+                }
+            }
+        }
+
+
+    }
+}
