@@ -1,0 +1,212 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Data.OleDb;
+using System.Linq;
+using System.Drawing;
+using System.Threading;
+using System.Text;
+using System.Windows.Forms;
+using System.IO;
+using System.Reflection;
+using Word = Microsoft.Office.Interop.Word;
+using Microsoft.CSharp.RuntimeBinder;
+using Student_Traker_DB.Classes;
+using Student_Traker_DB.Forms;
+
+namespace Student_Traker_DB.Forms
+{
+
+    public partial class frmFaceSheet : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        private OleDbConnection connect = null;
+        private OleDbDataReader dr = null;
+        private OleDbCommand cmd = null;
+        private string cmdstr = null;
+       
+        private List<int> idnumbers = new List<int>();
+        private List<string> names = new List<string>();
+        private List<string> gdates = new List<string>();
+
+        private ImageCollector img = new ImageCollector();
+        private List<Image> Images = new List<Image>();
+        private string advselect;
+
+        public frmFaceSheet()
+        {
+            InitializeComponent();
+        }
+
+        private void frmFaceSheet_Load(object sender, EventArgs e)
+        {
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            LoadComboBox();
+
+            connect.Close();
+        }
+
+        private void LoadComboBox()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            List<Advisor> advlist = new List<Advisor>();
+
+            string cmdstr = "SELECT * FROM tbl_Advisor ORDER BY Advisor_Name";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                advlist.Add(new Advisor(dr["Advisor_Name"].ToString(), Convert.ToInt32(dr["AdvisorID"])));
+            }
+            dr.Close();
+
+            advlist.Add(new Advisor("First Phase",999));
+            advlist.Add(new Advisor("Apprentice", 99));
+
+            cbxSelect.DataSource = advlist;
+            cbxSelect.DisplayMember = "Name";
+            cbxSelect.ValueMember = "ID";
+        }
+
+        private class Advisor
+        {
+            public string Name { get; set; }
+            public int ID { get; set; }
+            public Advisor(string n, int i)
+            {
+                Name = n;
+                ID = i;
+            }
+        }
+
+        private void btnPrint_Click(object sender, EventArgs e)
+        {
+            // Get Photos and Info.
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            if (Convert.ToInt32(cbxSelect.SelectedValue) == 999) // If First Phase
+            {
+                cmdstr = "SELECT StudentID, First_Name, Last_Name, Grad_Date, Middle_Initial FROM tbl_Students WHERE PhaseID = 1 AND RTC_Entry_Date >= #" + DateTime.Today.Date.Add(new TimeSpan(-26,0,0,0)) + "# ORDER BY Last_Name";
+            }
+
+            else if (Convert.ToInt32(cbxSelect.SelectedValue) == 99) // If Apprentice
+            {
+                cmdstr = "SELECT StudentID, First_Name, Last_Name, Grad_Date, Middle_Initial FROM tbl_Students WHERE PhaseID = 5 ORDER BY Last_Name";
+            }
+
+            else
+            {
+                cmdstr = "SELECT StudentID, First_Name, Last_Name, Grad_Date, Middle_Initial FROM tbl_Students WHERE AdvisorID = " + Convert.ToInt32(cbxSelect.SelectedValue) + " AND PhaseID <> 5 ORDER BY Grad_Date";
+            }
+
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                idnumbers.Add(Convert.ToInt32(dr["StudentID"]));
+                gdates.Add(Convert.ToDateTime(dr["Grad_Date"]).ToString("d"));
+                names.Add(dr["Last_Name"].ToString().Trim() + ", " + dr["First_Name"].ToString().Trim() + " " + dr["Middle_Initial"].ToString().Trim());
+            }
+
+            dr.Close();
+
+            //Advisor Name
+            if (Convert.ToInt32(cbxSelect.SelectedValue) != 999 && Convert.ToInt32(cbxSelect.SelectedValue) != 99) // Not first phase or Apprentice
+            {
+                cmdstr = "SELECT Advisor_Name FROM tbl_Advisor WHERE AdvisorID=" + Convert.ToInt32(cbxSelect.SelectedValue) + ";";
+                cmd = new OleDbCommand(cmdstr, connect);
+                advselect = cmd.ExecuteScalar().ToString();
+            }
+
+            // Accessing Photos
+            for (int i = 0; i < idnumbers.Count; i++)
+            {
+                cmdstr = "SELECT tbl_Image.IMG FROM tbl_Image WHERE tbl_Image.StudentID=" + idnumbers[i] + ";";
+                cmd = new OleDbCommand(cmdstr, connect);
+
+                try
+                {
+                    Images.Add(img.ByteArrayToImage((Byte[])cmd.ExecuteScalar()));
+                }
+
+                catch (NullReferenceException)
+                {
+                    Byte[] imagebyte = img.ReadImageFile("C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Resources\\TCLogo_Portrait.jpg");
+                    Images.Add(img.ByteArrayToImage(imagebyte));
+                }
+            }
+
+            connect.Close();
+
+            // Fill Word Doc
+            object oTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\FaceSheet_Template.dotx";
+            object oMissing = System.Reflection.Missing.Value;
+
+            Word._Application oWord;
+            Word._Document oDoc;
+            oWord = new Word.Application();
+            oWord.Visible = true;
+
+            oDoc = oWord.Documents.Add(ref oTemplate, ref oMissing, ref oMissing, ref oMissing);
+
+            object oEnd = "\\EndOfDoc"; // Predefined Bookmark
+            object oAdv = "adv";
+            object oHeader = "header";
+
+            if (Convert.ToInt32(cbxSelect.SelectedValue) == 999) // If First Phase
+            {
+                oDoc.Bookmarks.get_Item(ref oHeader).Range.Text = "First Phase";
+            }
+
+            else if (Convert.ToInt32(cbxSelect.SelectedValue) == 99) // If Apprentice
+            {
+                oDoc.Bookmarks.get_Item(ref oAdv).Range.Text = "Apprentices - Ferguson";
+            }
+
+            else
+            {
+                oDoc.Bookmarks.get_Item(ref oAdv).Range.Text = advselect;
+            }
+           
+            for (int k = 0; k < idnumbers.Count; k++)
+            {
+                var bmp = new Bitmap(Images[k]);
+                string imagepath = Path.GetTempFileName();
+                bmp.Save(imagepath, bmp.RawFormat);
+                bmp.Dispose();
+                
+                oDoc.Bookmarks.get_Item(ref oEnd).Range.InlineShapes.AddPicture(imagepath).Height = 105;
+                oDoc.Bookmarks.get_Item(ref oEnd).Range.Text = names[k];
+                oDoc.Bookmarks.get_Item(ref oEnd).Range.Text = gdates[k];
+            }
+
+            // Resets values
+
+            idnumbers = new List<int>();
+            names = new List<string>();
+            gdates = new List<string>();
+
+            img = new ImageCollector();
+            Images = new List<Image>();
+
+        }
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            this.Dispose();
+        }
+    }
+}
