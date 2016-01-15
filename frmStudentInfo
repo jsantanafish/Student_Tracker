@@ -1,0 +1,1426 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Data.OleDb;
+using System.Linq;
+using System.Drawing;
+using System.Threading;
+using System.Text;
+using System.Windows.Forms;
+using System.IO;
+
+using Student_Traker_DB.Classes;
+using Student_Traker_DB.Forms;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmStudentInfo : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        OleDbConnection connect = null;
+        OleDbCommand cmd = null;
+        OleDbDataReader dr = null;
+
+        ImageCollector img = new ImageCollector();
+
+        List<int> idnumbers = new List<int>();
+        int counter = 0;
+        int studentid;
+        bool tagclick = false;
+        bool isnew = false;
+        bool editmode = false;
+        string strSCHEDIDselect;
+
+        public frmStudentInfo()
+        {
+            InitializeComponent();
+        }
+
+        public frmStudentInfo(bool newstudent)
+        {
+            connect = new OleDbConnection(strConnect);
+            isnew = newstudent;
+            InitializeComponent();
+        }
+
+        public frmStudentInfo(int studentidentity, bool tagclicked)
+        {
+            studentid = studentidentity;
+            tagclick = tagclicked;
+            InitializeComponent();
+        }
+
+        private void frmStudentInfo_Load(object sender, EventArgs e)
+        {
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            
+            LoadComboBoxes();
+           
+          
+            this.frmNormalMode();
+
+            if (isnew == false)
+            {
+                RefreshStudents();
+                
+                if (tagclick == true)
+                {
+                    counter = idnumbers.IndexOf(studentid);
+                }
+
+                LoadStudent();
+                connect.Close();
+            }
+
+            else if (isnew == true)
+            {
+                frmAddMode();
+            }
+        }
+
+        private void RefreshStudents()
+        {
+            idnumbers = new List<int>();
+
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT tbl_Students.StudentID FROM tbl_Students ORDER BY tbl_Students.Last_Name;";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                idnumbers.Add(Convert.ToInt32(dr["StudentID"]));
+            }
+            dr.Close();
+        }
+
+        private void LoadAdvisor()
+        {
+            this.cbxStdAdvisor.ResetBindings();
+
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT tbl_Students.AdvisorID FROM tbl_Students WHERE tbl_Students.StudentID=" + studentid + ";";
+            cmd = new OleDbCommand(cmdstr, connect);
+
+            int advisorid = Convert.ToInt32(cmd.ExecuteScalar());
+
+            cmdstr = "SELECT tbl_Advisor.Advisor_Name FROM tbl_Advisor WHERE tbl_Advisor.AdvisorID=" + advisorid +";";
+            cmd = new OleDbCommand(cmdstr, connect);
+
+            cbxStdAdvisor.Text = cmd.ExecuteScalar().ToString();
+        }
+        
+        private void LoadComboBoxes()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            List<Advisor> advlist = new List<Advisor>();
+
+            string cmdstr = "SELECT * FROM tbl_Advisor ORDER BY Advisor_Name";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+               advlist.Add(new Advisor(dr["Advisor_Name"].ToString(),Convert.ToInt32(dr["AdvisorID"])));
+            }
+            dr.Close();
+
+            cbxStdAdvisor.DataSource = advlist;
+            cbxStdAdvisor.DisplayMember = "Name";
+            cbxStdAdvisor.ValueMember = "ID";
+
+            List<Department> deptlist = new List<Department>();
+
+            cmdstr = "SELECT * FROM tbl_Departments ORDER BY Department";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                deptlist.Add(new Department(dr["Department"].ToString(), Convert.ToInt32(dr["DepartmentID"])));
+            }
+            dr.Close();
+
+            cbxDept.DataSource = deptlist;
+            cbxDept.DisplayMember = "Name";
+            cbxDept.ValueMember = "ID";
+
+            List<Room> roomlist = new List<Room>();
+
+            cmdstr = "SELECT * FROM tbl_Rooms ORDER BY Room_Name";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                roomlist.Add(new Room(dr["Room_Name"].ToString(), Convert.ToInt32(dr["RoomID"])));
+            }
+            dr.Close();
+
+            cbxRoom.DataSource = roomlist;
+            cbxRoom.DisplayMember = "Name";
+            cbxRoom.ValueMember = "ID";
+        
+        }
+
+        private class Advisor
+        {
+            public string Name { get; set; }
+            public int ID { get; set; }
+            public Advisor(string n, int i)
+            {
+                Name = n;
+                ID = i;
+            }
+        }
+
+        private class Department
+        {
+            public string Name { get; set; }
+            public int ID { get; set; }
+            public Department(string n, int i)
+            {
+                Name = n;
+                ID = i;
+            }
+        }
+
+        private class Room
+        {
+            public string Name { get; set; }
+            public int ID { get; set; }
+            public Room(string n, int i)
+            {
+                Name = n;
+                ID = i;
+            }
+        }
+
+        private void LoadImage()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT tbl_Image.IMG FROM tbl_Image WHERE tbl_Image.StudentID=" + studentid + ";";
+            cmd = new OleDbCommand(cmdstr, connect);
+
+            try
+            {
+                pbxStudent.Image = img.ByteArrayToImage((Byte[])cmd.ExecuteScalar());
+            }
+
+            catch (NullReferenceException)
+            {
+                Byte[] imagebyte = img.ReadImageFile("C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Resources\\TCLogo_Portrait.jpg");
+                pbxStudent.Image = img.ByteArrayToImage(imagebyte);
+            }
+        }
+        private void LoadRecord()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT * FROM tbl_Students WHERE tbl_Students.StudentID=" + studentid + ";";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            string fullname = null;
+
+            while (dr.Read())
+            {
+                string fname = Convert.ToString(dr["First_Name"]);
+                string lname = Convert.ToString(dr["Last_Name"]);
+                string mname = Convert.ToString(dr["Middle_Initial"]);
+                txtStdFirstName.Text = fname.Trim();
+                txtStdLastName.Text = lname.Trim();
+                txtStdMI.Text = mname.Trim();
+                txtStdID.Text = dr["StudentID"].ToString();
+                dtpStdDOB.Text = dr["Date_Of_Birth"].ToString();
+
+                fullname = fname.Trim() + " " + lname.Trim();
+
+                txtStdAge.Text = GetAge(Convert.ToDateTime(dr["Date_Of_Birth"]));
+
+                cbxStdInductCtr.Text = dr["Induct_Center"].ToString();
+                dtpStdInduct.Text = dr["Induction_Date"].ToString();
+                dtpStdRTCEntry.Text = dr["RTC_Entry_Date"].ToString();
+                cbxStdPhase.Text = dr["PhaseID"].ToString().Trim();
+                dtpStdGradDate.Text = dr["Grad_Date"].ToString();
+            }
+            dr.Close();
+
+           
+            // Displays on Navigation Pane
+            gbxNavigate.Text = fullname;
+            // Consider changing Name fields? idk, going to have to redesign
+            txtNavigate.Text = (counter + 1).ToString() + " of " + idnumbers.Count.ToString();
+
+        }
+
+        private string GetAge(DateTime dob)
+        {
+            TimeSpan tsAge = DateTime.Today - dob;
+            return (Math.Floor((tsAge.TotalDays) / 365.25)).ToString();
+        }
+
+        private void LoadRoom()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT RoomID from tbl_Students WHERE StudentID = " + studentid + ";";
+            cmd = new OleDbCommand(cmdstr, connect);
+           
+            cmdstr = "SELECT Room_Name FROM tbl_Rooms WHERE RoomID =" + Convert.ToInt32(cmd.ExecuteScalar()) + " ;";
+            cmd = new OleDbCommand(cmdstr, connect);
+            cbxRoom.Text = cmd.ExecuteScalar().ToString();
+        }
+
+        private void LoadDepartment()
+        {
+            this.cbxDept.ResetBindings();
+
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT * FROM tbl_BigBoard WHERE tbl_BigBoard.StudentID=" + studentid + ";";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            int deptid = 17;
+
+            while (dr.Read())
+            {
+                deptid = Convert.ToInt32(dr["DepartmentID"]) ;
+                ckbxFlagged.Checked = Convert.ToBoolean(dr["Flagged"]);
+                ckbxFundraiser.Checked = Convert.ToBoolean(dr["Fundraiser"]);
+                ckbxStudentLeader.Checked = Convert.ToBoolean(dr["StudentLeader"]);
+                ckbxGED.Checked = Convert.ToBoolean(dr["GED"]);
+
+                try
+                {
+                    dtpFlagged.Text = dr["FlagEndDate"].ToString();
+                }
+
+                catch (NullReferenceException)
+                {
+                    dtpFlagged.ResetText();
+                }
+            }
+            dr.Close();
+
+            cmdstr = "SELECT Department FROM tbl_Departments WHERE DepartmentID=" + deptid +";";
+            cmd = new OleDbCommand(cmdstr, connect);
+
+            cbxDept.Text = cmd.ExecuteScalar().ToString();
+
+           
+        }
+
+        private void LoadAvailability()
+        {
+            bool free = true;
+
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT * FROM tbl_Schedule WHERE StudentID="+ studentid +";";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                if (dr.HasRows)
+                {
+                    DateTime sdate = Convert.ToDateTime(dr["StartDate"]);
+                    DateTime edate = Convert.ToDateTime(dr["EndDate"]);
+
+                    if ((DateTime.Now >= sdate) && (DateTime.Now <= edate))
+                    {
+                        free = false;
+                    }
+                }
+            }
+
+            dr.Close();
+
+            if (cbxStdPhase.Text != "5")
+            {
+                cmdstr = "SELECT * FROM tbl_WeeklySchedule;";
+                cmd = new OleDbCommand(cmdstr, connect);
+                dr = cmd.ExecuteReader();
+
+                while (dr.Read())
+                {
+                    TimeSpan tsStart = Convert.ToDateTime(dr["StartDate"]).TimeOfDay;
+                    TimeSpan tsEnd = Convert.ToDateTime(dr["EndDate"]).TimeOfDay;
+
+                    if ((DateTime.Now >= DateTime.Today.Date.Add(tsStart)) && (DateTime.Now <= DateTime.Today.Date.Add(tsEnd)) && (Convert.ToDateTime(dr["StartDate"]).DayOfWeek == DateTime.Now.DayOfWeek))
+                    {
+                        free = false;
+                    }
+                }
+                dr.Close();
+            }
+
+            if (free == false)
+            {
+                txtbxAvailable.Text = "BUSY";
+                txtbxAvailable.BackColor = Color.Red;
+            }
+
+            else
+            {
+                txtbxAvailable.Text = "AVAILABLE";
+                txtbxAvailable.BackColor = Color.LawnGreen;
+            }
+        }
+
+        private void LoadNotes()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT tbl_Students.Notes FROM tbl_Students WHERE tbl_Students.StudentID = "+ studentid +";";
+            cmd = new OleDbCommand(cmdstr, connect);
+            tbxNotes.Text = Convert.ToString(cmd.ExecuteScalar());
+        }
+
+        private void LoadScheduler()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            DateTime dateselected = Convert.ToDateTime(mcrSchedule.SelectionRange.Start);
+            LoadList(dateselected);
+            UpdateBoldDates();
+
+        }
+
+        private void LoadList(DateTime DTselect)
+        {
+            DateTime DTselect_end = DTselect.Add(new TimeSpan(23, 59, 59));
+            this.lvwSchedule.Clear();
+
+            this.lvwSchedule.GridLines = true;
+            this.lvwSchedule.View = View.Details;
+            this.lvwSchedule.Columns.Add("Date", 83);
+            this.lvwSchedule.Columns.Add("Time", 75);
+            this.lvwSchedule.Columns.Add("Event", 214);
+            this.lvwSchedule.Columns.Add("Ends", 152);
+
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr1 = "SELECT * FROM tbl_Schedule WHERE tbl_Schedule.StudentID =" + studentid + "AND tbl_Schedule.StartDate BETWEEN #" + DTselect + "# AND #" + DTselect_end + "# UNION SELECT * FROM tbl_Schedule WHERE tbl_Schedule.StudentID =" + studentid + "AND tbl_Schedule.EndDate BETWEEN #" + DTselect + "# AND #" + DTselect_end + "# UNION SELECT * FROM tbl_Schedule WHERE tbl_Schedule.StudentID =" + studentid + "AND ( (tbl_Schedule.StartDate < #" + DTselect + "# ) AND ( tbl_Schedule.EndDate > #" + DTselect_end + "# ) ) ORDER BY tbl_Schedule.StartDate;";
+            cmd = new OleDbCommand(cmdstr1, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                DateTime itmDateTime = Convert.ToDateTime(dr["StartDate"].ToString());
+                string strDate = itmDateTime.ToString("MM/dd/yyyy");
+                string strTime = itmDateTime.ToString("hh:mm tt");
+
+                ListViewItem row = new ListViewItem(strDate);
+                row.SubItems.Add(strTime);
+                row.SubItems.Add(dr["Note"].ToString());
+
+                itmDateTime = Convert.ToDateTime(dr["EndDate"].ToString());
+                row.SubItems.Add(itmDateTime.ToString("MM/dd/yyyy hh:mm tt"));
+                row.SubItems.Add(dr["ScheduleID"].ToString());
+
+                row.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
+
+                this.lvwSchedule.Items.Add(row);
+            }
+
+            dr.Close();
+            // Find a way to sort all events by time? (non-essential);
+
+            if (cbxStdPhase.Text != "5")
+            {
+                cmdstr1 = "SELECT * FROM tbl_WeeklySchedule ORDER BY StartDate;";
+                cmd = new OleDbCommand(cmdstr1, connect);
+                dr = cmd.ExecuteReader();
+
+                while (dr.Read())
+                {
+                    if (DTselect.DayOfWeek == Convert.ToDateTime(dr["StartDate"]).DayOfWeek)
+                    {
+                        string strDate = DTselect.ToString("MM/dd/yyyy");
+                        string strTime = Convert.ToDateTime(dr["StartDate"]).ToString("hh:mm tt");
+
+                        ListViewItem row = new ListViewItem(strDate);
+                        row.SubItems.Add(strTime);
+                        row.SubItems.Add(dr["Note"].ToString());
+
+                        TimeSpan tsendtime = Convert.ToDateTime(dr["EndDate"]).TimeOfDay;
+
+                        DateTime itmEndDT = DTselect.Date.Add(tsendtime);
+
+                        row.SubItems.Add(itmEndDT.ToString("MM/dd/yyyy hh:mm tt"));
+
+                        row.Font = new Font(FontFamily.GenericSansSerif, 11, FontStyle.Regular);
+
+                        this.lvwSchedule.Items.Add(row);
+                    }
+                }
+
+                dr.Close();
+            }
+        }
+
+        private void UpdateBoldDates()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr2 = "SELECT * FROM tbl_Schedule WHERE tbl_Schedule.StudentID=" + studentid + ";";
+            cmd = new OleDbCommand(cmdstr2, connect);
+            dr = cmd.ExecuteReader();
+
+            this.mcrSchedule.BoldedDates = new System.DateTime[] {};
+
+            while (dr.Read())
+            {
+                if (dr.HasRows)
+                {
+                    DateTime sdate = Convert.ToDateTime(dr["StartDate"].ToString());
+                    this.mcrSchedule.AddBoldedDate(sdate);
+
+                    DateTime edate = Convert.ToDateTime(dr["EndDate"].ToString());
+                    this.mcrSchedule.AddBoldedDate(edate);
+
+                    int k = 24;
+                    DateTime dummydate = edate;
+
+                    while (sdate <= dummydate)
+                    {
+                        TimeSpan tsDay = new TimeSpan(k, 0, 0);
+                        dummydate = edate.Subtract(tsDay);
+
+                        if (dummydate > sdate)
+                        {
+                            this.mcrSchedule.AddBoldedDate(dummydate);
+                        }
+
+                        k += 24;
+                    }
+                }
+
+            }
+
+            this.mcrSchedule.UpdateBoldedDates();
+            dr.Close();
+        }
+
+        private int CreateStudentID(string txt)
+        {
+            int id;
+            string value = txt;
+            id = value.GetHashCode();
+            id = Math.Abs(id);
+            return id;
+        }
+
+        private void LoadStudent()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            studentid = idnumbers[counter];
+            LoadImage();
+            LoadRecord();
+            LoadRoom();
+            LoadDepartment();
+            LoadAvailability();
+            LoadNotes();
+            LoadScheduler();
+            LoadAdvisor();
+        }
+
+        private void frmEditMode()
+        {
+            editmode = true;
+            this.txtStdFirstName.Enabled = true;
+            this.txtStdLastName.Enabled = true;
+            this.txtStdMI.Enabled = true;
+            this.dtpStdDOB.Enabled = true;
+            this.cbxStdInductCtr.Enabled = true;
+            this.dtpStdInduct.Enabled = true;
+            this.dtpStdRTCEntry.Enabled = true;
+            this.dtpStdGradDate.Enabled = true;
+            this.cbxStdAdvisor.Enabled = true;
+            this.cbxStdPhase.Enabled = true;
+            btnAdvisorAdd.Enabled = false;
+
+            this.gbxNavigate.Enabled = false;
+
+            this.btnRecNew.Enabled = false;
+            this.btnRecEdit.Enabled = false;
+            this.btnRecSave.Enabled = true;
+            this.btnRecDelete.Enabled = false;
+            this.btnRecImage.Enabled = false;
+            this.btnRecPrint.Enabled = false;
+            this.btnRecDone.Enabled = false;
+            this.btnRecCancel.Enabled = true;
+            
+            btnRecCancel.Text = "Cancel";
+
+            this.cbxDept.Enabled = true;
+            this.ckbxFlagged.Enabled = true;
+            this.ckbxFundraiser.Enabled = true;
+            this.ckbxGED.Enabled = true;
+            this.ckbxStudentLeader.Enabled = true;
+
+            this.btnSchedAdd.Enabled = true;
+            this.tbxNotes.Enabled = true;
+            this.cbxRoom.Enabled = true;
+
+            if (tagclick == true)
+            {
+                btnSchedMaster.Enabled = false;
+                btnSchedWorkCall.Enabled = false;
+                btnAdvisorAdd.Enabled = false;
+                this.btnDepBigBoard.Enabled = false;
+            }
+        }
+
+        private void frmAddMode()
+        {
+            //Enable/Disable the correct buttons:
+            btnRecNew.Enabled = false;
+            btnRecEdit.Enabled = false;
+            btnRecSave.Enabled = false;
+            btnRecDelete.Enabled = false;
+            btnRecImage.Enabled = false;
+            btnRecPrint.Enabled = false;
+            btnRecDone.Enabled = true;
+            btnRecCancel.Enabled = true;
+            btnRecCancel.Text = "Cancel";
+            this.ControlBox = false;
+            gbxNavigate.Enabled = false;
+            gbxScheduler.Enabled = false;
+            btnDepBigBoard.Enabled = false;
+            cbxDept.Enabled = true;
+            ckbxFlagged.Enabled = true;
+            ckbxFundraiser.Enabled = true;
+            ckbxGED.Enabled = true;
+            ckbxStudentLeader.Enabled = true;
+            tbxNotes.Enabled = true;
+            txtStdFirstName.Enabled = true;
+            txtStdMI.Enabled = true;
+            txtStdLastName.Enabled = true;
+            dtpStdDOB.Enabled = true;
+            cbxStdInductCtr.Enabled = true;
+            dtpStdInduct.Enabled = true;
+            dtpStdRTCEntry.Enabled = true;
+            dtpStdGradDate.Enabled = true;
+            cbxStdAdvisor.Enabled = true;
+            cbxStdPhase.Enabled = true;
+            cbxRoom.Enabled = true;
+            btnAdvisorAdd.Enabled = false;
+
+            //Set Default Values
+            cbxDept.Text = "1ST PHASE";
+            cbxStdPhase.Text = "1";
+            gbxStudentInfo.Text = "New Student";
+        }
+
+        private void frmNormalMode()
+        {
+            this.txtStdFirstName.Enabled = false;
+            this.txtStdLastName.Enabled = false;
+            this.txtStdMI.Enabled = false;
+            this.dtpStdDOB.Enabled = false;
+            this.cbxStdInductCtr.Enabled = false;
+            this.dtpStdInduct.Enabled = false;
+            this.dtpStdRTCEntry.Enabled = false;
+            this.dtpStdGradDate.Enabled = false;
+            this.cbxStdAdvisor.Enabled = false;
+            this.cbxStdPhase.Enabled = false;
+            btnAdvisorAdd.Enabled = true;
+
+            this.gbxNavigate.Enabled = true;
+
+            this.btnSchedDelete.Enabled = false;
+            this.btnSchedEdit.Enabled = false;
+
+            this.btnRecNew.Enabled = true;
+            this.btnRecEdit.Enabled = true;
+            this.btnRecSave.Enabled = false;
+            this.btnRecDelete.Enabled = true;
+            this.btnRecImage.Enabled = true;
+            this.btnRecPrint.Enabled = true;
+            this.btnRecDone.Enabled = false;
+            this.btnRecCancel.Enabled = true;
+
+            //Cancel btn toggles between cancel and close:
+
+            btnRecCancel.Text = "Close";
+            this.cbxDept.Enabled = false;
+            this.ckbxFlagged.Enabled = false;
+            this.ckbxFundraiser.Enabled = false;
+            this.ckbxGED.Enabled = false;
+            this.ckbxStudentLeader.Enabled = false;
+            this.dtpFlagged.Enabled = false;
+
+            this.btnSchedAdd.Enabled = false;
+            this.tbxNotes.Enabled = false;
+            this.cbxRoom.Enabled = false;
+
+            if(tagclick == true)
+            {
+                btnRecPrint.Enabled = false;
+                btnSchedMaster.Enabled = false;
+                btnSchedWorkCall.Enabled = false;
+                btnAdvisorAdd.Enabled = false;
+                this.ControlBox = false;
+                this.btnRecNew.Enabled = false;
+                this.gbxNavigate.Enabled = false;
+                this.btnDepBigBoard.Enabled = false;
+            }
+        }
+
+        private void btnSchedAdd_Click(object sender, EventArgs e)
+        {
+            bool isAdd = true;
+            string nullstring = "0";
+
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            DateTime dateselected = Convert.ToDateTime(mcrSchedule.SelectionRange.Start);
+            frmSchedulerAdd add = new frmSchedulerAdd(studentid,dateselected,isAdd,nullstring);
+            DialogResult dialog = add.ShowDialog();
+
+            if (dialog == DialogResult.OK)
+            {
+                LoadList(dateselected);
+                UpdateBoldDates();
+                connect.Close();
+            }
+
+            this.btnSchedDelete.Enabled = false;
+            this.btnSchedEdit.Enabled = false;
+        }
+
+        private void gbxNavigate_Enter(object sender, EventArgs e)
+        {
+
+        }
+
+        private void gbxStudentInfo_Enter(object sender, EventArgs e)
+        {
+
+        }
+
+        private void btnRecNew_Click(object sender, EventArgs e)
+        {
+            frmStudentInfo newstudent = new frmStudentInfo(true);
+            DialogResult diastudent = newstudent.ShowDialog();
+
+            if (diastudent == DialogResult.OK)
+            {
+                idnumbers.Add(Globals.GLOBALINT);
+                LoadStudent();
+                Globals.GLOBALINT = 0;
+            }
+        }
+
+        private void btnRecDone_Click(object sender, EventArgs e)
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr3 = "INSERT INTO tbl_Students([StudentID], [Last_Name], [First_Name], [Middle_Initial], [Date_Of_Birth], [Induction_Date], [Induct_Center], [RTC_Entry_Date], [Grad_Date], [AdvisorID], [PhaseID], [RoomID], [Notes]) VALUES (@StudentID, @Last_Name, @First_Name, @Middle_Initial, @Date_Of_Birth, @Induction_Date, @Induct_Center, @RTC_Entry_Date, @Grad_Date, @AdvisorID, @PhaseID, @RoomID, @Notes)";
+            cmd = new OleDbCommand(cmdstr3, connect);
+
+            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = Convert.ToInt32(txtStdID.Text);
+            cmd.Parameters.AddWithValue("@Last_Name", Convert.ToString(txtStdLastName.Text));
+            cmd.Parameters.AddWithValue("@First_Name", Convert.ToString(txtStdFirstName.Text));
+            cmd.Parameters.AddWithValue("@Middle_Initial", Convert.ToString(txtStdMI.Text));
+            cmd.Parameters.AddWithValue("@Date_Of_Birth", OleDbType.Date).Value = Convert.ToDateTime(dtpStdDOB.Value.Date);
+            cmd.Parameters.AddWithValue("@Induction_Date", OleDbType.Date).Value = Convert.ToDateTime(dtpStdInduct.Value.Date);
+            cmd.Parameters.AddWithValue("@Induct_Center", Convert.ToString(cbxStdInductCtr.Text));
+            cmd.Parameters.AddWithValue("@RTC_Entry_Date", OleDbType.Date).Value = Convert.ToDateTime(dtpStdRTCEntry.Value.Date);
+            cmd.Parameters.AddWithValue("@Grad_Date", OleDbType.Date).Value = Convert.ToDateTime(dtpStdGradDate.Value.Date);
+            cmd.Parameters.AddWithValue("@AdvisorID", OleDbType.Integer).Value = Convert.ToInt32(cbxStdAdvisor.SelectedValue);
+            cmd.Parameters.AddWithValue("@PhaseID", OleDbType.Integer).Value = Convert.ToInt32(cbxStdPhase.Text);
+            cmd.Parameters.AddWithValue("@RoomID", OleDbType.Integer).Value = Convert.ToInt32(cbxRoom.SelectedValue);
+            cmd.Parameters.AddWithValue("@Notes", Convert.ToString(tbxNotes.Text));
+            cmd.ExecuteNonQuery();
+
+
+            if (ckbxFlagged.Checked == false)
+            {
+                string cmdstr4 = "INSERT INTO tbl_BigBoard([StudentID],[DepartmentID],[Fundraiser],[GED],[StudentLeader],[Flagged],[FlagEndDate],[Apprentice]) VALUES (@StudentID,@DepartmentID,@Fundraiser,@GED,@StudentLeader,@Flagged,@FlagEndDate,@Apprentice) ;";
+                cmd = new OleDbCommand(cmdstr4, connect);
+
+                bool isApprentice = false;
+
+                if (Convert.ToString(cbxStdPhase.Text) == "5")
+                {
+                    isApprentice = true;
+                }
+                cmd.Parameters.AddWithValue("@StudentID", Convert.ToInt32(txtStdID.Text));
+                cmd.Parameters.AddWithValue("@DepartmentID", Convert.ToInt32(cbxDept.SelectedValue));
+                cmd.Parameters.AddWithValue("@Fundraiser", Convert.ToBoolean(ckbxFundraiser.Checked));
+                cmd.Parameters.AddWithValue("@GED", Convert.ToBoolean(ckbxGED.Checked));
+                cmd.Parameters.AddWithValue("@StudentLeader", Convert.ToBoolean(ckbxStudentLeader.Checked));
+                cmd.Parameters.AddWithValue("@Flagged", Convert.ToBoolean(ckbxFlagged.Checked));
+                cmd.Parameters.AddWithValue("@FlagEndDate", OleDbType.Date).Value = DateTime.Today.Date;
+                cmd.Parameters.AddWithValue("@Apprentice", isApprentice);
+
+                cmd.ExecuteNonQuery();
+            }
+
+            else if (ckbxFlagged.Checked == true)
+            {
+                string cmdstr4 = "INSERT INTO tbl_BigBoard([StudentID],[DepartmentID],[Fundraiser],[GED],[StudentLeader],[Flagged],[FlagEndDate],[Apprentice]) VALUES (@StudentID,@DepartmentID,@Fundraiser,@GED,@StudentLeader,@Flagged,@FlagEndDate,@Apprentice) ;";
+                cmd = new OleDbCommand(cmdstr4, connect);
+
+                bool isApprentice = false;
+
+                if (Convert.ToString(cbxStdPhase.Text) == "5")
+                {
+                    isApprentice = true;
+                }
+                cmd.Parameters.AddWithValue("@StudentID", Convert.ToInt32(txtStdID.Text));
+                cmd.Parameters.AddWithValue("@DepartmentID", Convert.ToInt32(cbxDept.SelectedValue));
+                cmd.Parameters.AddWithValue("@Fundraiser", Convert.ToBoolean(ckbxFundraiser.Checked));
+                cmd.Parameters.AddWithValue("@GED", Convert.ToBoolean(ckbxGED.Checked));
+                cmd.Parameters.AddWithValue("@StudentLeader", Convert.ToBoolean(ckbxStudentLeader.Checked));
+                cmd.Parameters.AddWithValue("@Flagged", Convert.ToBoolean(ckbxFlagged.Checked));
+                cmd.Parameters.AddWithValue("@FlagEndDate", OleDbType.Date).Value = Convert.ToDateTime(dtpFlagged.Value.Date);
+                cmd.Parameters.AddWithValue("@Apprentice", isApprentice);
+
+                cmd.ExecuteNonQuery();
+            }
+
+            this.DialogResult = DialogResult.OK;
+            Globals.GLOBALINT = Convert.ToInt32(txtStdID.Text);
+            this.Dispose();
+        }
+
+        private void dtpStdDOB_ValueChanged(object sender, EventArgs e)
+        {
+            DateTime birthday = dtpStdDOB.Value;
+            txtStdAge.Text = GetAge(birthday);
+        }
+
+        private void txtStdFirstName_TextChanged(object sender, EventArgs e)
+        {
+            if (isnew == true)
+            {
+                txtStdID.Text = Convert.ToString(CreateStudentID(txtStdLastName.Text.Trim() + txtStdMI.Text.Trim() + txtStdFirstName.Text.Trim()));
+            }
+        }
+
+        private void txtStdLastName_TextChanged(object sender, EventArgs e)
+        {
+            if (isnew == true)
+            {
+                txtStdID.Text = Convert.ToString(CreateStudentID(txtStdLastName.Text.Trim() + txtStdMI.Text.Trim() + txtStdFirstName.Text.Trim()));
+            }
+        }
+
+        private void txtStdMI_TextChanged(object sender, EventArgs e)
+        {
+            if (isnew == true)
+            {
+                txtStdID.Text = Convert.ToString(CreateStudentID(txtStdLastName.Text.Trim() + txtStdMI.Text.Trim() + txtStdFirstName.Text.Trim()));
+            }
+        }
+
+        private void btnNavFirst_Click(object sender, EventArgs e)
+        {
+            counter = 0;
+            LoadStudent();
+        }
+
+        private void btnNavPrev_Click(object sender, EventArgs e)
+        {
+            if (counter -1 < 0)
+            {
+                MessageBox.Show("You've reached the first record");
+            }
+
+            else
+            {
+                counter -= 1;
+                LoadStudent();
+            }
+        }
+
+        private void btnNavNext_Click(object sender, EventArgs e)
+        {
+            if (counter + 1 >= idnumbers.Count)
+            {
+                MessageBox.Show("You've reached the last record");
+            }
+
+            else
+            {
+                counter += 1;
+                LoadStudent();
+            }
+        }
+
+        private void btnNavLast_Click(object sender, EventArgs e)
+        {
+            counter = idnumbers.Count - 1;
+            LoadStudent();
+        }
+
+        private void btnNavSearch_Click(object sender, EventArgs e)
+        {
+            frmSearchResults Search = new frmSearchResults();
+            DialogResult diasearch = Search.ShowDialog();
+
+            if (diasearch == DialogResult.OK && Globals.GLOBALINT != 0)
+            {
+                counter = idnumbers.IndexOf(Globals.GLOBALINT);
+                LoadStudent();
+                Globals.GLOBALINT = 0;
+            }
+        }
+
+        private void btnRecImage_Click(object sender, EventArgs e)
+        {
+            frmAddImage image = new frmAddImage(studentid);
+            DialogResult diamage = image.ShowDialog();
+
+            if (diamage == DialogResult.OK)
+            {
+                this.RefreshStudents();
+                this.LoadStudent();
+            }
+        }
+
+        private void txtStdID_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void mcrSchedule_DateChanged(object sender, DateRangeEventArgs e)
+        {
+            DateTime dateselected = Convert.ToDateTime(mcrSchedule.SelectionRange.Start);
+            LoadList(dateselected);
+            connect.Close();
+
+            this.btnSchedDelete.Enabled = false;
+            this.btnSchedEdit.Enabled = false;
+        }
+
+        private void btnSchedDelete_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                string cmdstr = "DELETE * FROM tbl_Schedule WHERE tbl_Schedule.ScheduleID = " + Convert.ToInt32(strSCHEDIDselect) + " AND tbl_Schedule.StudentID = "+ studentid + ";";
+
+                if (connect.State.ToString() != "Open")
+                {
+                    connect = new OleDbConnection(strConnect);
+                    connect.Open();
+                }
+
+                cmd = new OleDbCommand(cmdstr, connect);
+                cmd.ExecuteNonQuery();
+
+                DateTime dateselected = Convert.ToDateTime(this.mcrSchedule.SelectionRange.Start);
+
+                LoadList(dateselected);
+                UpdateBoldDates();
+
+                connect.Close();
+
+                this.btnSchedDelete.Enabled = false;
+                this.btnSchedEdit.Enabled = false;
+            }
+            catch (NullReferenceException)
+            {
+
+            }
+        }
+
+        private void lvwSchedule_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (btnRecSave.Enabled == true)
+            {
+                try
+                {
+                    ListViewItem itmEvent = this.lvwSchedule.FocusedItem;
+                    ListViewItem.ListViewSubItemCollection sitmEvent = itmEvent.SubItems;
+                    strSCHEDIDselect = sitmEvent[4].Text.ToString();
+
+                    this.btnSchedDelete.Enabled = true;
+                    this.btnSchedEdit.Enabled = true;
+                }
+                catch (System.NullReferenceException)
+                {
+
+                }
+
+                catch (ArgumentOutOfRangeException)
+                {
+                    strSCHEDIDselect = null;
+                    btnSchedEdit.Enabled = false;
+                    btnSchedDelete.Enabled = false;
+                }
+            }
+        }
+
+        private void lvwSchedule_SelectedItemChanged(object sender, EventArgs e) // subsequent clicks
+        {
+            if (btnRecSave.Enabled == true)
+            {
+                try
+                {
+                    ListViewItem itmEvent = this.lvwSchedule.FocusedItem;
+                    ListViewItem.ListViewSubItemCollection sitmEvent = itmEvent.SubItems;
+                    strSCHEDIDselect = sitmEvent[4].Text.ToString();
+
+                    this.btnSchedDelete.Enabled = true;
+                    this.btnSchedEdit.Enabled = true;
+                }
+
+                catch (ArgumentOutOfRangeException)
+                {
+                    strSCHEDIDselect = null;
+                    btnSchedDelete.Enabled = false;
+                    btnSchedEdit.Enabled = false;
+                }
+            }
+        }
+
+        private void btnSchedEdit_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                bool isAdd = false;
+
+                if (connect.State.ToString() != "Open")
+                {
+                    connect = new OleDbConnection(strConnect);
+                    connect.Open();
+                }
+
+                DateTime dateselected = Convert.ToDateTime(mcrSchedule.SelectionRange.Start);
+
+                frmSchedulerAdd add = new frmSchedulerAdd(studentid, dateselected, isAdd, strSCHEDIDselect);
+                DialogResult dialog = add.ShowDialog();
+
+                if (dialog == DialogResult.OK)
+                {
+                    LoadList(dateselected);
+                    UpdateBoldDates();
+                    connect.Close();
+                }
+
+                this.btnSchedDelete.Enabled = false;
+                this.btnSchedEdit.Enabled = false;
+            }
+            
+            catch (NullReferenceException)
+            {
+
+            }
+        }
+
+        private void btnSchedWorkCall_Click(object sender, EventArgs e)
+        {
+            // If in edit mode, popup
+            if (btnNavNext.Enabled == false)
+            {
+                DialogResult sure = MessageBox.Show("You are currently editing a student record.\r\nDo you want to navigate away from this page?\r\nAny changes you have made will not be saved.", "Do you want to navigate away from this page?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+                if (sure == DialogResult.Yes)
+                {
+                    frmListPreamble preamble = new frmListPreamble();
+                    preamble.Show();
+                    this.Dispose();
+                }
+            }
+
+            else
+            {
+                frmListPreamble preamble = new frmListPreamble();
+                preamble.Show();
+                this.Dispose();
+            }
+        }
+
+        private void btnSchedMaster_Click(object sender, EventArgs e)
+        {
+            // If in edit mode, popup
+            if (btnNavNext.Enabled == false)
+            {
+                DialogResult sure = MessageBox.Show("You are currently editing a student record.\r\nDo you want to navigate away from this page?\r\nAny changes you have made will not be saved.", "Do you want to navigate away from this page?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+                if (sure == DialogResult.Yes)
+                {
+                    frmMasterSchedule sched = new frmMasterSchedule();
+                    sched.Show();
+                    this.Dispose();
+                }
+            }
+
+            else
+            {
+                frmMasterSchedule sched = new frmMasterSchedule();
+                sched.Show();
+                this.Dispose();
+            }
+        }
+
+        private void btnRecSave_Click(object sender, EventArgs e)
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+       
+            string cmdstr5 = "UPDATE tbl_Students " +
+                                "SET tbl_Students.Last_Name = '" + txtStdLastName.Text.Trim() + "', " +
+                                    "tbl_Students.First_Name = '" + txtStdFirstName.Text.Trim() + "', " +
+                                    "tbl_Students.Middle_Initial = '" + txtStdMI.Text.Trim() + "', " +
+                                    "tbl_Students.Date_Of_Birth = #" + Convert.ToDateTime(dtpStdDOB.Value.Date) + "#, " +
+                                    "tbl_Students.Induction_Date = #" + Convert.ToDateTime(dtpStdInduct.Value.Date) + "#, " +
+                                    "tbl_Students.Induct_Center = '" + cbxStdInductCtr.Text + "', " +
+                                    "tbl_Students.RTC_Entry_Date = #" + Convert.ToDateTime(dtpStdRTCEntry.Value.Date) + "#, " +
+                                    "tbl_Students.Grad_Date = #" + Convert.ToDateTime(dtpStdGradDate.Value.Date) + "#, " +
+                                    "tbl_Students.AdvisorID = " + Convert.ToInt32(cbxStdAdvisor.SelectedValue) + ", " +
+                                    "tbl_Students.PhaseID = " + Convert.ToInt32(cbxStdPhase.Text) + ", " +
+                                    "tbl_Students.RoomID = " + Convert.ToInt32(cbxRoom.SelectedValue) + ", " +
+                                    "tbl_Students.Notes = '" + tbxNotes.Text + "' " +
+                                "WHERE tbl_Students.StudentID = " + studentid + " ;";
+
+            cmd = new OleDbCommand(cmdstr5, connect);
+            cmd.ExecuteNonQuery();
+
+            bool isApprentice = false;
+
+            if (Convert.ToString(cbxStdPhase.Text) == "5")
+            {
+                isApprentice = true;
+            }
+
+            if (ckbxFlagged.Checked == false)
+            {
+                string cmdstr6 = "UPDATE tbl_BigBoard " +
+                                    "SET tbl_BigBoard.DepartmentID = '" + cbxDept.SelectedValue + "', " +
+                                        "tbl_BigBoard.Fundraiser = " + Convert.ToBoolean(ckbxFundraiser.Checked) + ", " +
+                                        "tbl_BigBoard.GED = " + Convert.ToBoolean(ckbxGED.Checked) + ", " +
+                                        "tbl_BigBoard.StudentLeader = " + Convert.ToBoolean(ckbxStudentLeader.Checked) + ", " +
+                                        "tbl_BigBoard.Flagged = " + Convert.ToBoolean(ckbxFlagged.Checked) + ", " +
+                                        "tbl_BigBoard.FlagEndDate = #" + DateTime.Today.Date + "#, " +
+                                        "tbl_BigBoard.Apprentice = " + isApprentice + " " +
+                                    "WHERE tbl_BigBoard.StudentID = " + studentid + " ;";
+                cmd = new OleDbCommand(cmdstr6, connect);
+                cmd.ExecuteNonQuery();
+            }
+
+            else if (ckbxFlagged.Checked == true)
+            {
+                string cmdstr6 = "UPDATE tbl_BigBoard " +
+                                    "SET tbl_BigBoard.DepartmentID = '" + cbxDept.SelectedValue + "', " +
+                                        "tbl_BigBoard.Fundraiser = " + Convert.ToBoolean(ckbxFundraiser.Checked) + ", " +
+                                        "tbl_BigBoard.GED = " + Convert.ToBoolean(ckbxGED.Checked) + ", " +
+                                        "tbl_BigBoard.StudentLeader = " + Convert.ToBoolean(ckbxStudentLeader.Checked) + ", " +
+                                        "tbl_BigBoard.Flagged = " + Convert.ToBoolean(ckbxFlagged.Checked) + ", " +
+                                        "tbl_BigBoard.FlagEndDate = #" + Convert.ToDateTime(dtpFlagged.Value.Date) + "#, " +
+                                        "tbl_BigBoard.Apprentice = " + isApprentice + " " +
+                                    "WHERE tbl_BigBoard.StudentID = " + studentid + " ;";
+                cmd = new OleDbCommand(cmdstr6, connect);
+                cmd.ExecuteNonQuery();
+            }
+
+            frmNormalMode();
+            LoadStudent();
+            
+        }
+        private void btnRecEdit_Click(object sender, EventArgs e)
+        {
+            frmEditMode();
+        }
+
+        private void btnRecDelete_Click(object sender, EventArgs e)
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            bool isdeleted = false;
+            Random rnd = new Random();
+            double randoub = rnd.NextDouble();
+
+            string studentname = txtStdFirstName.Text.Trim() + " "  + txtStdLastName.Text.Trim();
+            string firstname = txtStdFirstName.Text.Trim();
+
+            if (randoub <= 0.95)
+            {
+                DialogResult result = MessageBox.Show("Are you sure you want to delete " + studentname + "?", "DELETE", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
+
+                if (result == DialogResult.Yes)
+                {
+                    string strdel = "DELETE from tbl_Schedule WHERE StudentID= " + studentid + ";";
+                    cmd = new OleDbCommand(strdel, connect);
+                    cmd.ExecuteNonQuery();
+
+                    strdel = "DELETE from tbl_Image WHERE StudentID= " + studentid + ";";
+                    cmd = new OleDbCommand(strdel, connect);
+                    cmd.ExecuteNonQuery();
+
+                    strdel = "DELETE from tbl_Students WHERE StudentID= " + studentid + ";";
+                    cmd = new OleDbCommand(strdel, connect);
+                    cmd.ExecuteNonQuery();
+
+                    strdel = "DELETE from tbl_BigBoard WHERE StudentID= " + studentid + ";";
+                    cmd = new OleDbCommand(strdel, connect);
+                    cmd.ExecuteNonQuery();
+
+                    MessageBox.Show("Successfully Deleted");
+                    isdeleted = true;
+                }
+                else if (result == DialogResult.No)
+                {
+                    MessageBox.Show("Phew! That was a close one!");
+                }
+            }
+
+            else if (randoub > .95)
+            {
+                DialogResult result = MessageBox.Show("Are you sure you want to delete " + studentname + "?", "DELETE", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
+
+                if (result == DialogResult.Yes)
+                {
+
+                    DialogResult result1 = MessageBox.Show("Are you really really sure you want to do this?", "DELETE", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
+
+                    if (result1 == DialogResult.Yes)
+                    {
+                       
+
+                        DialogResult result2 = MessageBox.Show("Promise you'll pray for him", "Aren't you going to miss " + firstname + "?", MessageBoxButtons.OK, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
+
+                        frmDeletePicture delpic = new frmDeletePicture(studentid);
+                        DialogResult diapic = delpic.ShowDialog();
+
+                        if (diapic == DialogResult.OK)
+                        {
+                            string strdel = "DELETE from tbl_Schedule WHERE StudentID= " + studentid + ";";
+                            cmd = new OleDbCommand(strdel, connect);
+                            cmd.ExecuteNonQuery();
+
+                            strdel = "DELETE from tbl_Image WHERE StudentID= " + studentid + ";";
+                            cmd = new OleDbCommand(strdel, connect);
+                            cmd.ExecuteNonQuery();
+
+                            strdel = "DELETE from tbl_Students WHERE StudentID= " + studentid + ";";
+                            cmd = new OleDbCommand(strdel, connect);
+                            cmd.ExecuteNonQuery();
+
+                            strdel = "DELETE from tbl_BigBoard WHERE StudentID= " + studentid + ";";
+                            cmd = new OleDbCommand(strdel, connect);
+                            cmd.ExecuteNonQuery();
+
+                            MessageBox.Show("Successfully Deleted Forever");
+                            isdeleted = true;
+                        }
+
+                    }
+
+                    else if (result1 == DialogResult.No)
+                    {
+                        MessageBox.Show("Phew! That was a close one!");
+                    }
+                }
+
+                else if (result == DialogResult.No)
+                {
+                    MessageBox.Show("Phew! That was a close one!");
+                }
+            }
+
+            if (isdeleted == true)
+            {
+                RefreshStudents();
+
+                if (counter >= idnumbers.Count)
+                {
+                    counter = idnumbers.Count - 1;
+                }
+               
+                LoadStudent();
+            }
+        }
+        private void btnRecPrint_Click(object sender, EventArgs e)
+        {
+            frmPrint print = new frmPrint();
+            DialogResult diaprint = print.ShowDialog();
+        }
+
+        private void textBox1_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void txtStdAge_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void pbxStudent_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void btnDepBigBoard_Click(object sender, EventArgs e)
+        {
+            // If in edit mode, popup
+            if (btnNavNext.Enabled == false)
+            {
+                DialogResult sure = MessageBox.Show("You are currently editing a student record.\r\nDo you want to navigate away from this page?\r\nAny changes you have made will not be saved.", "Do you want to navigate away from this page?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                
+                if(sure == DialogResult.Yes)
+                {
+                    frmDepartments Bboard = new frmDepartments();
+                    Bboard.Show();
+                    this.Dispose();
+                }
+            }
+
+            else
+            {
+                frmDepartments Bboard = new frmDepartments();
+                Bboard.Show();
+                this.Dispose();
+            }
+        }
+
+        private void cbxStdAdvisor_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void btnAdvisorAdd_Click(object sender, EventArgs e)
+        {
+            frmAdvisorsEdit adv = new frmAdvisorsEdit();
+            DialogResult diadv = adv.ShowDialog();
+            if (diadv == DialogResult.OK)
+            {
+                LoadComboBoxes();
+                LoadStudent();
+            }
+
+        }
+
+        private void ckbxFlagged_CheckedChanged(object sender, EventArgs e)
+        {
+            if (ckbxFlagged.Checked == true)
+            {
+                if (ckbxFlagged.Enabled == true)
+                {
+                    dtpFlagged.Enabled = true;
+                }
+            }
+
+            else if (ckbxFlagged.Checked == false)
+            {
+                dtpFlagged.Enabled = false;
+                dtpFlagged.ResetText();
+            }
+        }
+
+        private void cbxRoom_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void btnRecCancel_Click(object sender, EventArgs e)
+        {
+            if (isnew == true)
+            {
+                this.Dispose();
+            }
+
+            if (editmode == true)
+            {
+                frmNormalMode();
+                LoadStudent();
+                editmode = false;
+            }
+
+            else
+            {
+                this.DialogResult = DialogResult.OK;
+                this.Dispose();
+            }
+        }
+
+        private void lblAdvisor_Click(object sender, EventArgs e)
+        {
+
+        }
+    }
+}
