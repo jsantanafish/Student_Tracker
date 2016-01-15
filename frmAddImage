@@ -1,0 +1,143 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Data.OleDb;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Text;
+using System.Windows.Forms;
+using System.IO;
+using Student_Traker_DB.Data;
+using Student_Traker_DB.Classes;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmAddImage : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        OleDbConnection connect = null;
+        OleDbCommand cmd = null;
+        OleDbDataReader dr = null;
+
+        ImageCollector img = new ImageCollector();
+        private string studentname;
+        private int StudentID;
+
+        public frmAddImage(int idnumber)
+        {
+            StudentID = idnumber;
+            InitializeComponent();
+        }
+
+        private void frmAddImage_Load(object sender, EventArgs e)
+        {
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            string cmdstr = "SELECT * FROM tbl_Students WHERE tbl_Students.StudentID= " + StudentID +";";
+            cmd = new OleDbCommand(cmdstr, connect);
+
+            dr = cmd.ExecuteReader();
+
+            while(dr.Read())
+            {
+                this.Text = "Edit Image for " + dr["First_Name"].ToString().Trim() + " " + dr["Last_Name"].ToString().Trim();
+            }
+
+            dr.Close();
+            connect.Close();
+            
+        }
+
+        private void lblImageText_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void btnInsert_Click(object sender, EventArgs e)
+        {
+            int imageID = 1;
+            if (txtImageLoc.Text.Trim() == "")
+            {
+                MessageBox.Show("Please select a image to upload into the database");
+                return;
+            }
+
+            if (this.connect.State.ToString() != "Open")
+            {
+                this.connect.Open();
+            }
+
+
+            cmd = new OleDbCommand("select max(ImageID) from tbl_Image;", connect);
+            imageID = (int)cmd.ExecuteScalar();
+            imageID += 1;
+
+            try
+            {
+                string fname = txtImageLoc.Text.Substring(txtImageLoc.Text.LastIndexOf("\\") + 1,
+                    +txtImageLoc.Text.Length - (txtImageLoc.Text.LastIndexOf("\\") + 1));
+                string path = txtImageLoc.Text;
+                img.ReadImageFile(path);
+             
+                // Is there already a picture there? 
+
+                string cmdstr = "Select * FROM tbl_Image WHERE tbl_Image.StudentID=" + StudentID + ";";
+                cmd = new OleDbCommand(cmdstr, connect);
+
+                if (cmd.ExecuteScalar() == null)
+                {
+                    cmd = new OleDbCommand("INSERT INTO tbl_Image(ImageID, StudentID, Image_Name, IMG)" +
+                        "VALUES (@ImageID, @StudentID, @Im, @Img)", connect);
+                    cmd.Parameters.AddWithValue("@ImageID", OleDbType.Integer).Value = imageID;
+                    cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = StudentID; //txtImgStudentID.Text
+                    cmd.Parameters.AddWithValue("@Im", fname);
+                    cmd.Parameters.AddWithValue("@Img", img.ReadImageFile(path));
+                    cmd.ExecuteNonQuery();
+                    
+                }
+
+                else if (cmd.ExecuteScalar() != null)
+                {
+                    cmdstr = "UPDATE tbl_Image " +
+                                "SET tbl_Image.Image_Name = @Im, " +
+                                    "tbl_Image.IMG = @Img " +
+                                "WHERE tbl_Image.StudentID = " + StudentID + " ;";
+                    cmd = new OleDbCommand(cmdstr, connect);
+                    cmd.Parameters.AddWithValue("@Im", fname);
+                    cmd.Parameters.AddWithValue("@Img", img.ReadImageFile(path));
+                    cmd.ExecuteNonQuery();
+                }
+
+                connect.Close();
+
+                MessageBox.Show("Image inserted successfully", "Insert Image into Access Database");
+                txtImageLoc.Text = "";
+                this.DialogResult = DialogResult.OK;
+                this.Dispose();
+            }
+
+            catch (FileNotFoundException)
+            {
+                MessageBox.Show("File path is invalid, please select a file.", "File Path Selection Error");
+            }
+        }
+
+        private void btnClose_Click(object sender, EventArgs e)
+        {
+            this.Dispose();
+        }
+
+        private void btnOpen_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog fDialog = new OpenFileDialog();
+            fDialog.Title = "Select file to be zipped";
+            fDialog.Filter = "JPG Files|*.jpg|JPEG Files|*.jpeg";
+            if (fDialog.ShowDialog() == DialogResult.OK)
+            {
+                txtImageLoc.Text = fDialog.FileName.ToString();
+            }
+        }
+    }
+}
