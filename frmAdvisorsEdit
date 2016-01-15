@@ -1,0 +1,198 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Windows.Forms;
+using System.Data.OleDb;
+using System.Threading.Tasks;
+using System.Threading;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmAdvisorsEdit : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        OleDbConnection connect = null;
+        OleDbCommand cmd = null;
+        OleDbDataReader dr = null;
+
+        string advnameselect;
+        int advidselect;
+        int advid;
+
+        public frmAdvisorsEdit()
+        {
+            InitializeComponent();
+        }
+
+        private void frmAdvisorsEdit_Load(object sender, EventArgs e)
+        {
+            LoadList();  
+        }
+
+        private void LoadList()
+        {
+            this.lsvAdvisors.Clear();
+            lsvAdvisors.View = View.List;
+
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            string cmdstr = "SELECT * FROM tbl_Advisor ORDER BY Advisor_Name;";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                if (Convert.ToInt32(dr["AdvisorID"]) != 0)
+                {
+                    ListViewItem row = new ListViewItem(dr["Advisor_Name"].ToString());
+                    row.SubItems.Add(dr["AdvisorID"].ToString());
+                    this.lsvAdvisors.Items.Add(row);
+                }
+            }
+            dr.Close();
+        }
+
+        private void btnRemove_Click(object sender, EventArgs e)
+        {
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            //First, Make sure no one has this advisor:
+            string cmdstr = "SELECT * FROM tbl_Students WHERE tbl_Students.AdvisorID= " + advidselect + ";";
+            cmd = new OleDbCommand(cmdstr, connect);
+            string affected = null;
+
+            try
+            {
+                affected = cmd.ExecuteScalar().ToString();
+            }
+
+            catch (NullReferenceException)
+            {
+            }
+
+            finally
+            {
+                if (affected != null)
+                {
+                    // If they do, reassign as Unassigned? or don't delete advisor
+                    DialogResult result = MessageBox.Show("There are students on this advisor's caseload.\r\nDo you still want to delete " + advnameselect + "?\r\nClicking YES will reassign these students as Unassigned.", "Delete " + advnameselect + " Department?", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        // Reassign as Unassigned
+                        cmdstr = "UPDATE tbl_Students SET AdvisorID=" + 0 + " WHERE AdvisorID=" + advidselect + ";";
+                        cmd = new OleDbCommand(cmdstr, connect);
+                        cmd.ExecuteNonQuery();
+
+                        // delete advisor from table
+                        cmdstr = "DELETE * FROM tbl_Advisor WHERE AdvisorID= " + advidselect + ";";
+                        cmd = new OleDbCommand(cmdstr, connect);
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    else if (result == DialogResult.No)
+                    {
+                        btnRemove.Enabled = false;
+                    }
+                }
+
+                else
+                {
+                    // delete advisor from table
+                    cmdstr = "DELETE * FROM tbl_Advisor WHERE AdvisorID= " + advidselect + ";";
+                    cmd = new OleDbCommand(cmdstr, connect);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            // Makes sure to allow enough time for deletion from table before LoadList()
+            Task[] waitarray = new Task[1];
+            waitarray[0] = Task.Factory.StartNew(() => Thread.SpinWait(1000000000));
+            Task.WaitAny(waitarray, 500);
+            this.LoadList();
+        }
+
+        private void btnClose_Click(object sender, EventArgs e)
+        {
+            this.DialogResult = DialogResult.OK;
+        }
+
+        private void btnAdd_Click(object sender, EventArgs e)
+        {
+            this.btnRemove.Enabled = false;
+
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            frmAddAdvisor add = new frmAddAdvisor();
+            DialogResult diadd = add.ShowDialog();
+
+            if (diadd == DialogResult.OK)
+            {
+                try
+                {
+                    string cmdstr = "SELECT max(AdvisorID) FROM tbl_Advisor;";
+                    cmd = new OleDbCommand(cmdstr, connect);
+                    advid = (int)cmd.ExecuteScalar();
+
+                    advid += 1;
+                }
+
+                catch (InvalidCastException)
+                {
+                    advid = 1;
+                }
+
+                finally
+                {
+                    string cmdstr = "INSERT INTO tbl_Advisor([AdvisorID], [Advisor_Name]) VALUES (@AdvisorID, @Advisor_Name);";
+                    cmd = new OleDbCommand(cmdstr, connect);
+
+                    cmd.Parameters.AddWithValue("@AdvisorID", OleDbType.Integer).Value = advid;
+                    cmd.Parameters.AddWithValue("@Advisor_Name", frmAddAdvisor.newadv);
+                    cmd.ExecuteNonQuery();
+                }
+                // Makes sure to allow enough time for deletion from table before LoadList()
+                Task[] waitarray = new Task[1];
+                waitarray[0] = Task.Factory.StartNew(() => Thread.SpinWait(1000000000));
+                Task.WaitAny(waitarray, 500);
+            }
+
+            this.LoadList();
+            connect.Close();
+        }
+
+        private void lsvAdvisors_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            this.btnRemove.Enabled = true;
+
+            try
+            {
+                ListViewItem itmEvent = this.lsvAdvisors.FocusedItem;
+                ListViewItem.ListViewSubItemCollection sitmEvent = itmEvent.SubItems;
+                advidselect = Convert.ToInt32(sitmEvent[1].Text);
+                advnameselect = sitmEvent[0].Text.ToString();
+            }
+            catch (System.NullReferenceException)
+            {
+
+            }
+        }
+
+        private void lsvAdisors_SelectedItemChanged(object sender, EventArgs e) // subsequent clicks
+        {
+            this.btnRemove.Enabled = true;
+
+            ListViewItem itmEvent = this.lsvAdvisors.FocusedItem;
+            ListViewItem.ListViewSubItemCollection sitmEvent = itmEvent.SubItems;
+            advidselect = Convert.ToInt32(sitmEvent[1].Text);
+            advnameselect = sitmEvent[0].Text.ToString();
+        }
+
+    }
+}
