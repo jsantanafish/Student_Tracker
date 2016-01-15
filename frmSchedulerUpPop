@@ -1,0 +1,92 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Windows.Forms;
+using System.Data.OleDb;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmSchedulerUpPop : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        
+        private OleDbConnection connect = null;
+        private OleDbDataReader dr = null;
+        private OleDbCommand cmd = null;
+
+        int studid;
+        int conflictID;
+
+        public frmSchedulerUpPop(int schedid, int studentid)
+        {
+            InitializeComponent();
+            studid = studentid;
+            conflictID = schedid;
+        }
+
+        private void frmSchedulerUpPop_Load(object sender, EventArgs e)
+        {
+            LoadList();
+        }
+
+        private void LoadList()
+        {
+            this.lsvEventConflict.Clear();
+
+            this.lsvEventConflict.GridLines = true;
+            this.lsvEventConflict.View = View.Details;
+            this.lsvEventConflict.Columns.Add("Date", 75);
+            this.lsvEventConflict.Columns.Add("Time", 75);
+            this.lsvEventConflict.Columns.Add("Event", 350);
+            this.lsvEventConflict.Columns.Add("Ends", 140);
+
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            string cmdstr2 = "SELECT * FROM tbl_Schedule WHERE tbl_Schedule.ScheduleID =" + conflictID + " AND StudentID=" + studid + ";";
+            cmd = new OleDbCommand(cmdstr2, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                DateTime itmDateTime = Convert.ToDateTime(dr["StartDate"].ToString());
+                string strDate = itmDateTime.ToString("MM/dd/yyyy");
+                string strTime = itmDateTime.ToString("hh:mm tt");
+
+                ListViewItem row = new ListViewItem(strDate);
+                row.SubItems.Add(strTime);
+                row.SubItems.Add(dr["Note"].ToString());
+
+                itmDateTime = Convert.ToDateTime(dr["EndDate"].ToString());
+                row.SubItems.Add(itmDateTime.ToString("MM/dd/yyyy hh:mm tt"));
+                row.SubItems.Add(dr["ScheduleID"].ToString());
+
+                lsvEventConflict.Items.Add(row);
+
+
+            }
+            dr.Close();
+            connect.Close();
+
+        }
+
+        private void btnYes_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void btnNo_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void Message_Click(object sender, EventArgs e)
+        {
+
+        }
+    }
+}
