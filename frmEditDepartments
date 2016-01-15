@@ -1,0 +1,194 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Windows.Forms;
+using System.Data.OleDb;
+using System.Threading.Tasks;
+using System.Threading;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmEditDepartments : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        OleDbConnection connect = null;
+        OleDbCommand cmd = null;
+        OleDbDataReader dr = null;
+
+        string depnameselect;
+        int depidselect;
+        int deptid;
+
+        public frmEditDepartments()
+        {
+            InitializeComponent();
+        }
+
+        private void frmEditDepartments_Load(object sender, EventArgs e)
+        {
+            LoadList();  
+        }
+
+        private void LoadList()
+        {
+            this.lsvDepartments.Clear();
+            lsvDepartments.View = View.List;
+
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            string cmdstr = "SELECT * FROM tbl_Departments ORDER BY DepartmentID;";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                ListViewItem row = new ListViewItem(dr["Department"].ToString());
+                row.SubItems.Add(dr["DepartmentID"].ToString());
+                this.lsvDepartments.Items.Add(row);
+            }
+            dr.Close();
+        }
+
+        private void btnAdd_Click(object sender, EventArgs e)
+        {
+            this.btnRemove.Enabled = false;
+
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            frmAddDept add = new frmAddDept();
+            DialogResult diadd = add.ShowDialog();
+
+            if (diadd == DialogResult.OK)
+            {
+                try
+                {
+                    string cmdstr = "SELECT max(DepartmentID) FROM tbl_Departments;";
+                    cmd = new OleDbCommand(cmdstr, connect);
+                    deptid = (int)cmd.ExecuteScalar();
+
+                    deptid += 1;
+                }
+
+                catch (InvalidCastException)
+                {
+                    deptid = 1;
+                }
+
+                finally
+                {
+                    string cmdstr = "INSERT INTO tbl_Departments([DepartmentID], [Department]) VALUES (@DepartmentID, @Department);";
+                    cmd = new OleDbCommand(cmdstr, connect);
+
+                    cmd.Parameters.AddWithValue("@DepartmentID", OleDbType.Integer).Value = deptid;
+                    cmd.Parameters.AddWithValue("@Department", frmAddDept.newDept);
+                    cmd.ExecuteNonQuery();
+                }
+                // Makes sure to allow enough time for deletion from table before LoadList()
+                Task[] waitarray = new Task[1];
+                waitarray[0] = Task.Factory.StartNew(() => Thread.SpinWait(1000000000));
+                Task.WaitAny(waitarray, 500);
+            }
+
+            this.LoadList();
+            connect.Close();
+        }
+
+        private void btnRemove_Click(object sender, EventArgs e)
+        {
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            //First, Make sure no one has this job:
+            string cmdstr = "SELECT * FROM tbl_BigBoard WHERE tbl_BigBoard.DepartmentID= " + depidselect + ";";
+            cmd = new OleDbCommand(cmdstr, connect);
+            string affected = null;
+
+            try
+            {
+                affected = cmd.ExecuteScalar().ToString();
+            }
+
+            catch (NullReferenceException)
+            {
+            }
+
+            finally
+            {
+                if (affected != null)
+                {
+                    // If they do, reassign as floaters? or don't delete job
+                    DialogResult result = MessageBox.Show("There are students in this department.\r\nDo you still want to delete " + depnameselect + "?\r\nClicking YES will reassign these students as FLOATERS.", "Delete " + depnameselect + " Department?", MessageBoxButtons.YesNo, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        // Reassign as floaters
+                        cmdstr = "UPDATE tbl_BigBoard SET DepartmentID=" + 17 + " WHERE DepartmentID=" + depidselect + ";";
+                        cmd = new OleDbCommand(cmdstr, connect);
+                        cmd.ExecuteNonQuery();
+
+                        // delete job from table
+                        cmdstr = "DELETE * FROM tbl_Departments WHERE DepartmentID= " + depidselect + ";";
+                        cmd = new OleDbCommand(cmdstr, connect);
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    else if (result == DialogResult.No)
+                    {
+                        btnRemove.Enabled = false;
+                    }
+                }
+
+                else
+                {
+                    // delete job from table
+                    cmdstr = "DELETE * FROM tbl_Departments WHERE DepartmentID= " + depidselect + ";";
+                    cmd = new OleDbCommand(cmdstr, connect);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            // Makes sure to allow enough time for deletion from table before LoadList()
+            Task[] waitarray = new Task[1];
+            waitarray[0] = Task.Factory.StartNew(() => Thread.SpinWait(1000000000));
+            Task.WaitAny(waitarray, 500);
+            this.LoadList();
+        }
+        private void btnClose_Click(object sender, EventArgs e)
+        {
+            this.DialogResult = DialogResult.OK;
+        }
+
+        private void lsvDepartments_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            this.btnRemove.Enabled = true;
+
+            try
+            {
+                ListViewItem itmEvent = this.lsvDepartments.FocusedItem;
+                ListViewItem.ListViewSubItemCollection sitmEvent = itmEvent.SubItems;
+                depidselect = Convert.ToInt32(sitmEvent[1].Text);
+                depnameselect = sitmEvent[0].Text.ToString();
+            }
+            catch (System.NullReferenceException)
+            {
+
+            }
+        }
+
+        private void lsvDepartments_SelectedItemChanged(object sender, EventArgs e) // subsequent clicks
+        {
+            this.btnRemove.Enabled = true;
+
+            ListViewItem itmEvent = this.lsvDepartments.FocusedItem;
+            ListViewItem.ListViewSubItemCollection sitmEvent = itmEvent.SubItems;
+            depidselect = Convert.ToInt32(sitmEvent[1].Text);
+            depnameselect = sitmEvent[0].Text.ToString();
+        }
+
+    }
+}
