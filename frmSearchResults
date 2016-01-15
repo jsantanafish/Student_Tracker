@@ -1,0 +1,238 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Data.OleDb;
+using System.Drawing;
+using System.Text;
+using System.Windows.Forms;
+using Student_Traker_DB.Classes;
+using Student_Traker_DB.Forms; 
+
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmSearchResults : Form
+    {
+/*
+#if USINGPROJECTSYSTEM
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=..\\..\\..\\..\\..\\TicketSales_StudentTraker.mdb";
+#else
+        //string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Data\\TicketSales_StudentTraker.mdb";
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=E:\\TicketSales_StudentTraker_be.mdb";
+#endif*/
+
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        OleDbCommand cmd;
+        OleDbConnection con;
+        OleDbDataAdapter daStudents;
+        DataSet ds = new DataSet();
+        DataRow dRow;
+        private string firstName;
+        private string lastName;
+        private int StdMaxRows = 0;
+        //StudentTag Student = new StudentTag();
+        int studentID;
+
+        public frmSearchResults()
+        {
+            InitializeComponent();
+            this.BringToFront(); 
+        }
+
+        private void frmSearchResults_Load(object sender, EventArgs e)
+        {
+            Globals.GLOBALINT = 0;
+
+            con = new OleDbConnection(strConnect);
+            this.lsvResults.GridLines = true;
+            this.lsvResults.View = View.Details;
+
+            // Add Column Headers
+            //this.lsvResults.Columns.Add("Row", 50);
+            this.lsvResults.Columns.Add("StudentID", 80);
+            this.lsvResults.Columns.Add("First Name", 100);
+            this.lsvResults.Columns.Add("Last Name", 100);
+            this.lsvResults.Columns.Add("M.I.", 50);
+
+            this.txtStudentName.Focus();
+        }
+
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            //if (this.txtStudentName.Text == "")
+            //{
+                Globals.GLOBALINT = 0;
+                this.lsvResults.Clear();
+                this.txtStudentName.Clear();
+                this.txtFirstName.Clear();
+                this.Close();
+            //}
+            //else
+            //{
+                
+             //   this.Close();
+            //}
+        }
+
+        private void btnSearch_Click(object sender, EventArgs e)
+        {
+            Globals.GLOBALINT = 0;
+           
+
+            if (this.txtStudentName.Text == "" && this.txtFirstName.Text == "")
+            {
+                MessageBox.Show("Type in a name to search.");
+                this.txtStudentName.Focus();
+            }
+            else
+            {
+                LoadList();
+                this.btnCancel.Text = "Close";
+            }
+        }
+
+        private void Control_Key(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                if (this.txtStudentName.Text == "")
+                {
+                    MessageBox.Show("<>:)");
+                    this.txtStudentName.Focus();
+                }
+                else
+                {
+                    LoadList();
+                    this.btnCancel.Text = "Close";
+                }
+            }
+        }
+
+        private void LoadList()
+        {
+            DataTable dTable = new DataTable();
+            ds = new DataSet();
+
+            // Clear the ListView control
+            lsvResults.Items.Clear();
+            lastName = txtStudentName.Text;
+            firstName = txtFirstName.Text;
+            if (this.con.State.ToString() != "Open")
+            {
+                this.con.Open();
+            }
+            cmd = new OleDbCommand("Select * from tbl_Students where Last_Name='" + lastName + "' or First_Name = '" + firstName + "' ORDER BY Last_Name;", con);
+            daStudents = new OleDbDataAdapter(cmd);
+           
+            daStudents.Fill(ds, "tbl_Students");
+            this.con.Close();
+            // Get the table from the data set
+            dTable = ds.Tables["tbl_Students"];
+            
+            // Display the items that are the result of the search
+            for (int i = 0; i < dTable.Rows.Count; i++)
+            {
+                dRow = dTable.Rows[i];
+
+                // display only the rows that have not been deleted
+                if (dRow.RowState != DataRowState.Deleted)
+                {
+                    // Display the records found
+                    ListViewItem row = new ListViewItem(dRow["StudentID"].ToString());
+                    
+                    row.SubItems.Add(dRow.ItemArray.GetValue(2).ToString()); // First name
+                    row.SubItems.Add(dRow.ItemArray.GetValue(1).ToString()); // Last name
+                    row.SubItems.Add(dRow.ItemArray.GetValue(3).ToString()); // Middle Initial
+                    lsvResults.Items.Add(row);
+                }
+            }
+        }
+
+        private void btnOk_Click(object sender, EventArgs e)
+        {   
+            this.Close();
+        }
+
+        private void GetStudent()
+        {
+            
+            int i;
+            string value;
+            Globals.GLOBALINT = 0;
+            if (lsvResults.SelectedIndices.Count == 0)
+            {
+                return;
+            }
+            i = lsvResults.SelectedIndices[0];
+            
+            if (i >= 0)
+            {
+                value = lsvResults.Items[i].Text.ToString();
+                Globals.GLOBALINT = Convert.ToInt32(value);
+                
+            }
+
+            if (Globals.STUDENTSINFO  == true)
+            {
+                Globals.STUDENTSINFO = false;
+               
+              //frmSearchResults.OkClick += Ok_Click;
+            
+                
+            }
+       /*private void Ok_Click()
+       {
+           frmSearchResults.Close();
+           frmResults = new frm_Results();
+           frmResults.Show();
+
+       }*/
+            else  //(Globals.TICKETSALES == true)
+            {
+                Globals.TICKETSALES = false;
+               
+            } 
+            /*else            
+            {
+           
+                MessageBox.Show("I think this programmer has no CLUE (Hey Andy,I guess only one search per user form access. Maybe we should close this form upon user clicking ok?)!!! ;o", "Well Drat this computer!!!");
+            }  */          
+        }
+
+        private void txtStudentName_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                LoadList();
+                this.btnOk.Enabled = true;
+            }
+        }
+
+        private void lsvResults_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            this.btnOk.Enabled = true;
+
+            try
+            {
+                GetStudent();
+            }
+            catch (System.NullReferenceException)
+            {
+            }
+            
+        }
+
+        private void lsvResults_SelectedItemChanged(object sender, EventArgs e)
+        {
+            this.btnOk.Enabled = true;
+            GetStudent();
+        }
+
+        private void txtStudentName_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+        
+    }
+}
