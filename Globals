@@ -1,0 +1,52 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Student_Traker_DB.Classes
+{
+    static class Globals
+    {
+        private static string _globalString;
+        private static int _globalInteger;
+        private static string _x;
+        private static string _y;
+        private static bool _TicketSales;
+        private static bool _StudentsInfo;
+
+        public static string GLOBALSTRING
+        {
+            get { return _globalString; }
+            set { _globalString = value; }
+        }
+
+        public static int GLOBALINT
+        {
+            get { return _globalInteger; }
+            set { _globalInteger = value; }
+        }
+
+        public static string X
+        {
+            get { return _x; }
+            set { _x = value; }
+        }
+
+        public static string Y
+        {
+            get { return _y; }
+            set { _y = value; }
+        }
+
+        public static bool TICKETSALES
+        {
+            get { return _TicketSales; }
+            set { _TicketSales = value; }
+        }
+
+        public static bool STUDENTSINFO
+        {
+            get { return _StudentsInfo; }
+            set { _StudentsInfo = value; }
+        }
+    }
+}
