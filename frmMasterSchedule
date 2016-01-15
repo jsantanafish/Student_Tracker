@@ -1,0 +1,51 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Windows.Forms;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmMasterSchedule : Form
+    {
+        public frmMasterSchedule()
+        {
+            InitializeComponent();
+        }
+
+        private void btnInfo_Click(object sender, EventArgs e)
+        {
+            frmStudentInfo info = new frmStudentInfo();
+            info.Show();
+            this.Dispose();
+        }
+
+        private void btnPrint_Click(object sender, EventArgs e)
+        {
+            frmPrint print = new frmPrint();
+            DialogResult diaprint = print.ShowDialog();
+        }
+
+        private void btnDepartments_Click(object sender, EventArgs e)
+        {
+            frmDepartments dep = new frmDepartments();
+            dep.Show();
+            this.Dispose();
+        }
+
+        private void btnList_Click(object sender, EventArgs e)
+        {
+            frmListPreamble prea = new frmListPreamble();
+            prea.Show();
+            this.Dispose();
+        }
+
+        private void frmMasterSchedule_Load(object sender, EventArgs e)
+        {
+
+        }
+    }
+}
