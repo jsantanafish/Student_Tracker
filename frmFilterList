@@ -1,0 +1,185 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Threading;
+using System.Globalization;
+using System.IO;
+using System.IO.Packaging;
+using System.Linq;
+using System.Text;
+using System.Reflection;
+using System.Windows.Forms;
+using Student_Traker_DB.User_Controls;
+using Student_Traker_DB.Classes;
+using ControlManager;
+using Student_Traker_DB.Forms;
+using System.Text.RegularExpressions;
+using Word = Microsoft.Office.Interop.Word;
+using System.Data.OleDb;
+using System.Drawing.Imaging;
+using Excel = Microsoft.Office.Interop.Excel;
+
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmFilterList : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        private OleDbConnection connect = null;
+        private OleDbDataReader dr = null;
+        private OleDbCommand cmd = null;
+
+        List<int> PhaseIDs = new List<int>();
+        public static List<int> CkdPhaseIDs = new List<int>();
+
+        List<int> DepIDs = new List<int>();
+        public static List<int> CkdDepIDs = new List<int>();
+
+        public frmFilterList()
+        {
+            InitializeComponent();
+        }
+
+        private void frmFilterList_Load(object sender, EventArgs e)
+        {
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            LoadPhases();
+            LoadDepartments();
+
+            connect.Close();
+        }
+
+        private void LoadDepartments()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT * FROM tbl_Departments;";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                DepIDs.Add(Convert.ToInt32(dr["DepartmentID"]));
+                cklbxDep.Items.Add(dr["Department"].ToString());
+            }
+
+            if (frmDragList.VisDepIDs == null)
+            {
+                // Check All
+                for (int nu = 0; nu < cklbxDep.Items.Count; nu++)
+                {
+                    cklbxDep.SetItemChecked(nu, true);
+                }
+            }
+
+            else
+            {
+                // Check previously checked.
+                foreach (int ID in frmDragList.VisDepIDs)
+                {
+                    cklbxDep.SetItemChecked(DepIDs.IndexOf(ID),true);
+                }
+            }
+
+
+            CkdDepIDs = new List<int>();
+        }
+
+        private void LoadPhases()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            cklbxPhase.Items.Add(1);
+            cklbxPhase.Items.Add(2);
+            cklbxPhase.Items.Add(3);
+            cklbxPhase.Items.Add(4);
+            cklbxPhase.Items.Add("Apprentice");
+
+            for (int i = 1; i < 6; i++)
+            {
+                PhaseIDs.Add(i);
+            }
+
+            if (frmDragList.VisPhaseIDs == null)
+            {
+                // Check All 
+                for (int nu = 0; nu < cklbxPhase.Items.Count; nu++)
+                {
+                    cklbxPhase.SetItemChecked(nu, true);
+                }
+            }
+
+            else
+            {
+                // Check previously checked
+                foreach (int ID in frmDragList.VisPhaseIDs)
+                {
+                    cklbxPhase.SetItemChecked(PhaseIDs.IndexOf(ID), true);
+                }
+            }
+
+            CkdPhaseIDs = new List<int>();
+        }
+
+        private void btnOK_Click(object sender, EventArgs e)
+        {
+            CkdDepIDs = new List<int>();
+            CkdPhaseIDs = new List<int>();
+
+            foreach (int idx in cklbxDep.CheckedIndices)
+            {
+                CkdDepIDs.Add(DepIDs[idx]);
+            }
+
+            foreach (int idx in cklbxPhase.CheckedIndices)
+            {
+                CkdPhaseIDs.Add(PhaseIDs[idx]);
+            }
+
+            this.DialogResult = DialogResult.OK;
+        }
+
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            this.Dispose();
+        }
+
+        private void btnCheck_Click(object sender, EventArgs e)
+        {
+            foreach (int i in cklbxDep.CheckedIndices)
+            {
+                cklbxDep.SetItemCheckState(i, CheckState.Checked);
+            }
+
+            foreach (int i in cklbxPhase.CheckedIndices)
+            {
+                cklbxPhase.SetItemCheckState(i, CheckState.Checked);
+            }
+        }
+
+        private void btnUncheck_Click(object sender, EventArgs e)
+        {
+            foreach (int i in cklbxDep.CheckedIndices)
+            {
+                cklbxDep.SetItemCheckState(i, CheckState.Unchecked);
+            }
+
+            foreach (int i in cklbxPhase.CheckedIndices)
+            {
+                cklbxPhase.SetItemCheckState(i, CheckState.Unchecked);
+            }
+        }
+    }
+}
