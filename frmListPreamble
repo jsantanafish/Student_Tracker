@@ -1,0 +1,309 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Threading;
+using System.Text;
+using System.Windows.Forms;
+using Student_Traker_DB.Classes;
+using Student_Traker_DB.Forms;
+using System.Data.OleDb;
+
+namespace Student_Traker_DB
+{
+    public partial class frmListPreamble : Form
+    {
+        private DateTime dselectWork;
+        private DateTime dselectFund;
+        private DateTime dselectChoir;
+        private DateTime dselectBanq;
+
+        static public DateTime datework;
+        static public string titlework;
+        static public DateTime depwork;
+        static public DateTime retwork;
+        static public int vanwork;
+
+        static public DateTime datefund;
+        static public string d2dfund;
+        static public DateTime depfund;
+        static public DateTime retfund;
+
+        static public DateTime datechoir;
+        static public string titlechoir;
+        static public string addresschoir;
+        static public DateTime breakchoir;
+        static public DateTime depchoir;
+        static public DateTime retchoir;
+        static public DateTime startchoir;
+
+        static public DateTime datebanq;
+        static public string titlebanq;
+        static public DateTime timebanq;
+        static public DateTime endbanq;
+
+        public frmListPreamble()
+        {
+            InitializeComponent();
+        }
+
+        private void frmListPreamble_Load(object sender, EventArgs e)
+        {
+            LoadTimeComboBoxes();
+            DefaultDateSelect();
+        }
+
+        private void DefaultDateSelect()
+        {
+            dselectFund = calFund.SelectionRange.Start;
+            txtDateFund.Text = dselectFund.ToString("D");
+
+            dselectBanq = calBanq.SelectionRange.Start;
+            txtDateBanq.Text = dselectBanq.ToString("D");
+
+            dselectChoir = calChoir.SelectionRange.Start;
+            txtDateChoir.Text = dselectChoir.ToString("D");
+
+            dselectWork = calWork.SelectionRange.Start;
+            txtDateWork.Text = dselectWork.ToString("D");
+        }
+
+        private void LoadTimeComboBoxes()
+        {
+            List<Time> times1 = new List<Time>();
+            List<Time> times2 = new List<Time>();
+            List<Time> times3 = new List<Time>();
+            List<Time> times4 = new List<Time>();
+            List<Time> times5 = new List<Time>();
+            List<Time> times6 = new List<Time>();
+            List<Time> times7 = new List<Time>();
+            List<Time> times8 = new List<Time>();
+            List<Time> times9 = new List<Time>();
+            List<Time> times10 = new List<Time>();
+
+            for (int t = 0; t < 48; t++)
+            {
+                times1.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+                times2.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+                times3.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+                times4.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+                times5.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+                times6.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+                times7.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+                times8.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+                times9.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+                times10.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+            }
+
+            // Set to comboboxes
+            cbxRetFund.DataSource = times1;
+            cbxDepFund.DataSource = times2;
+            cbxBreakChoir.DataSource = times3;
+            cbxDepChoir.DataSource = times4;
+            cbxServiceChoir.DataSource = times5;
+            cbxRetChoir.DataSource = times6;
+            cbxDepWork.DataSource = times7;
+            cbxRetWork.DataSource = times8;
+            cbxTimeBanq.DataSource = times9;
+            cbxEndBanq.DataSource = times10;
+
+            cbxRetFund.DisplayMember = "timedisplay";
+            cbxDepFund.DisplayMember = "timedisplay";
+            cbxBreakChoir.DisplayMember = "timedisplay";
+            cbxDepChoir.DisplayMember = "timedisplay";
+            cbxServiceChoir.DisplayMember = "timedisplay";
+            cbxRetChoir.DisplayMember = "timedisplay";
+            cbxDepWork.DisplayMember = "timedisplay";
+            cbxRetWork.DisplayMember = "timedisplay";
+            cbxTimeBanq.DisplayMember = "timedisplay";
+            cbxEndBanq.DisplayMember = "timedisplay";
+
+            cbxRetFund.ValueMember = "minutes";
+            cbxDepFund.ValueMember = "minutes";
+            cbxBreakChoir.ValueMember = "minutes";
+            cbxDepChoir.ValueMember = "minutes";
+            cbxServiceChoir.ValueMember = "minutes";
+            cbxRetChoir.ValueMember = "minutes";
+            cbxDepWork.ValueMember = "minutes";
+            cbxRetWork.ValueMember = "minutes";
+            cbxTimeBanq.ValueMember = "minutes";
+            cbxEndBanq.ValueMember = "minutes";
+
+            for (int q = 1; q < 5; q++)
+            {
+                cbxVanWork.Items.Add(q);
+            }
+
+            cbxVanWork.SelectedIndex = 0;
+        }
+        public class Time
+        {
+            public string timedisplay { get; set; }
+            public int minutes { get; set; }
+            public Time(string td, int m)
+            {
+                timedisplay = td;
+                minutes = m;
+            }
+        }
+
+        private void calFund_DateChanged(object sender, DateRangeEventArgs e)
+        {
+            dselectFund = calFund.SelectionRange.Start;
+            txtDateFund.Text = dselectFund.ToString("D");
+        }
+
+        private void calWork_DateChanged(object sender, DateRangeEventArgs e)
+        {
+            dselectWork = calWork.SelectionRange.Start;
+            txtDateWork.Text = dselectWork.ToString("D");
+        }
+
+        private void calChoir_DateChanged(object sender, DateRangeEventArgs e)
+        {
+            dselectChoir = calChoir.SelectionRange.Start;
+            txtDateChoir.Text = dselectChoir.ToString("D");
+        }
+
+        private void calBanq_DateChanged(object sender, DateRangeEventArgs e)
+        {
+            dselectBanq = calBanq.SelectionRange.Start;
+            txtDateBanq.Text = dselectBanq.ToString("D");
+        }
+
+        private void btnOKFund_Click(object sender, EventArgs e)
+        {
+            if (Convert.ToInt32(cbxDepFund.SelectedValue) < Convert.ToInt32(cbxRetFund.SelectedValue))
+            {
+                try
+                {
+
+                    datefund = dselectFund;
+                    d2dfund = cbxD2DFund.SelectedItem.ToString();
+                    depfund = datefund.Add(new TimeSpan(0, Convert.ToInt32(cbxDepFund.SelectedValue), 0));
+                    retfund = datefund.Add(new TimeSpan(0, Convert.ToInt32(cbxRetFund.SelectedValue), 0));
+
+                    frmDragList drag = new frmDragList(2);
+                    drag.Show();
+
+                }
+                catch (NullReferenceException)
+                {
+                    MessageBox.Show("There are one or more empty fields.");
+                }
+            }
+
+            else if (Convert.ToInt32(cbxDepFund.SelectedValue) >= Convert.ToInt32(cbxRetFund.SelectedValue))
+            {
+                MessageBox.Show("Return time must be after departure time!","Error",MessageBoxButtons.OK,MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnOKChoir_Click(object sender, EventArgs e)
+        {
+            if ((Convert.ToInt32(cbxBreakChoir.SelectedValue) < Convert.ToInt32(cbxDepChoir.SelectedValue)) && (Convert.ToInt32(cbxDepChoir.SelectedValue) < Convert.ToInt32(cbxServiceChoir.SelectedValue)) && (Convert.ToInt32(cbxServiceChoir.SelectedValue) < Convert.ToInt32(cbxRetChoir.SelectedValue)))
+            {
+                try
+                {
+                    datechoir = dselectChoir;
+                    titlechoir = txtChurchChoir.Text.Trim();
+                    addresschoir = txtAddChoir.Text.Trim();
+                    breakchoir = dselectChoir.Add(new TimeSpan(0,Convert.ToInt32(cbxBreakChoir.SelectedValue),0));
+                    depchoir = dselectChoir.Add(new TimeSpan(0, Convert.ToInt32(cbxDepChoir.SelectedValue), 0));
+                    retchoir = dselectChoir.Add(new TimeSpan(0, Convert.ToInt32(cbxRetChoir.SelectedValue), 0)); ;
+                    startchoir = dselectChoir.Add(new TimeSpan(0, Convert.ToInt32(cbxServiceChoir.SelectedValue), 0));
+
+                    frmDragList drag = new frmDragList(3);
+                    drag.Show();
+                }
+
+                catch (NullReferenceException)
+                {
+                    MessageBox.Show("There are one or more empty fields.");
+                }
+            }
+
+            else
+            {
+                MessageBox.Show("Time order of events is illogical.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnOKWork_Click(object sender, EventArgs e)
+        {
+            if (Convert.ToInt32(cbxDepWork.SelectedValue) < Convert.ToInt32(cbxRetWork.SelectedValue))
+            {
+                try
+                {
+                    datework = dselectWork;
+                    titlework = txtTitleWork.Text.Trim();
+                    depwork = dselectWork.Add(new TimeSpan(0, Convert.ToInt32(cbxDepWork.SelectedValue),0));
+                    retwork = dselectWork.Add(new TimeSpan(0, Convert.ToInt32(cbxRetWork.SelectedValue), 0));
+                    vanwork = Convert.ToInt32(cbxVanWork.SelectedItem);
+
+                    frmDragList drag = new frmDragList(1);
+                    drag.Show();
+                }
+
+                catch(NullReferenceException)
+                {
+                    MessageBox.Show("There are one or more empty fields.");
+                }
+            }
+
+            else
+            {
+                MessageBox.Show("Return time must be after departure time!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnOKBanq_Click(object sender, EventArgs e)
+        {
+             try
+                {
+                    datebanq = dselectBanq;
+                    titlebanq = txtTitleBanq.Text.Trim();
+                    timebanq = dselectBanq.Add(new TimeSpan(0, Convert.ToInt32(cbxTimeBanq.SelectedValue), 0));
+                    endbanq = dselectBanq.Add(new TimeSpan(0, Convert.ToInt32(cbxEndBanq.SelectedValue), 0));
+
+                    frmDragList drag = new frmDragList(4);
+                    drag.Show();
+                }
+
+                catch (NullReferenceException)
+                {
+                    MessageBox.Show("There are one or more empty fields.");
+                }
+            
+        }
+
+        private void btnInfo_Click(object sender, EventArgs e)
+        {
+            frmStudentInfo info = new frmStudentInfo();
+            info.Show();
+            this.Dispose();
+        }
+
+        private void btnSched_Click(object sender, EventArgs e)
+        {
+            frmMasterSchedule sched = new frmMasterSchedule();
+            sched.Show();
+            this.Dispose();
+        }
+
+        private void btnDepartments_Click(object sender, EventArgs e)
+        {
+            frmDepartments dep = new frmDepartments();
+            dep.Show();
+            this.Dispose();
+        }
+
+        private void btnPrint_Click(object sender, EventArgs e)
+        {
+            frmPrint print = new frmPrint();
+            DialogResult diaprint = print.ShowDialog();
+        }
+
+    }
+}
