@@ -1,0 +1,1179 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Threading;
+using System.Globalization;
+using System.IO;
+using System.IO.Packaging;
+using System.Linq;
+using System.Text;
+using System.Reflection;
+using System.Windows.Forms;
+using Student_Traker_DB.User_Controls;
+using Student_Traker_DB.Classes;
+using ControlManager;
+using Student_Traker_DB.Forms;
+using System.Text.RegularExpressions;
+using Word = Microsoft.Office.Interop.Word;
+using System.Data.OleDb;
+using System.Drawing.Imaging;
+using ZXing;
+using ZXing.Common;
+using Excel = Microsoft.Office.Interop.Excel;
+
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmSalesBadge : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        private OleDbConnection connect = null;
+        private OleDbDataReader dr = null;
+        private OleDbCommand cmd = null;
+
+        private int badgetype = 1; // 2 = Usher badge, 3 = Board Tag, 4 = Query
+
+        ImageCollector img = new ImageCollector();
+        List<int> idnumbers = new List<int>();
+        
+        private EncodingOptions EncodingOptions { get; set; }
+        private Type Renderer { get; set; }
+
+        public frmSalesBadge()
+        {
+            InitializeComponent();
+        }
+
+        public frmSalesBadge(int type)
+        {
+            badgetype = type;
+            InitializeComponent();
+        }
+
+        private void frmSalesBadge_Load(object sender, EventArgs e)
+        {
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            if (badgetype != 4)
+            {
+                LoadStudentNames();
+            }
+
+            else if (badgetype == 4)
+            {
+                // Load Parameters for Query
+                LoadParameters();
+
+                // Renames Items in the form
+                this.Text = "Generate a Query";
+                btnGenerate.Text = "Generate Query";
+
+                // Rearranges the form
+                cklbxStudents.Size = new Size(250, 350);
+                this.Size = new Size(275, 467);
+                btnGenerate.Location = new Point(83, 348);
+                btnClearList.Location = new Point(83, 389);
+                btnCancel.Location = new Point(178, 389);
+            }
+
+            connect.Close();
+        
+
+            if (badgetype == 3)
+            {
+                this.Text = "Print Board Tags";
+                btnGenerate.Text = "Generate Tags";
+            }
+
+            else if (badgetype == 2)
+            {
+                this.Text = "Print Usher Badges";
+                btnGenerate.Text = "Generate Badge";
+            }
+            
+        }
+        private void cklbxStudents_SelectedIndexChanged(object sender, EventArgs e)
+        { //Nada!
+        }
+
+        private void LoadStudentNames()
+        {
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT * FROM tbl_Students ORDER BY tbl_Students.Last_Name";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                idnumbers.Add(Convert.ToInt32(dr["StudentID"]));
+                string lastname = dr["Last_Name"].ToString();
+                string firstname = dr["First_Name"].ToString();
+                string middleI = dr["Middle_Initial"].ToString();
+                string fullname = (lastname.Trim() + ", " + firstname.Trim() + " " + middleI.Trim()).Trim();
+
+                cklbxStudents.Items.Add(fullname);
+            }
+            dr.Close();
+        }
+
+        private void LoadParameters()
+        {
+            cklbxStudents.Items.Add("Induction Center");
+            cklbxStudents.Items.Add("Induction Date");
+            cklbxStudents.Items.Add("RTC Entry Date");
+            cklbxStudents.Items.Add("Advisor");
+            cklbxStudents.Items.Add("Phase");
+            cklbxStudents.Items.Add("Graduation Date");
+            cklbxStudents.Items.Add("Department");
+            cklbxStudents.Items.Add("Fundraiser");
+            cklbxStudents.Items.Add("Flagged");
+            cklbxStudents.Items.Add("GED");
+            cklbxStudents.Items.Add("Room");
+            cklbxStudents.Items.Add("Age");
+            cklbxStudents.Items.Add("Date of Birth");
+            cklbxStudents.Items.Add("Notes");
+        }
+
+        private void btnGenerate_Click(object sender, EventArgs e)
+        {
+            if (badgetype == 1)// Sales Badge
+            {
+                int group = 0;
+
+                while (group * 8 < cklbxStudents.CheckedItems.Count)
+                {
+                    int[] ckdindices = new int[8];
+                    int[] bdgIDs = new int[8];
+                    string[] bdgFnames = new string[8];
+                    string[] bdgLnames = new string[8];
+                    Image[] bdgImages = new Image[8];
+                    Image[] bdgQRcodes = new Image[8];
+                    int[] bdgAges = new int[8];
+                    DateTime[] expDate = new DateTime[8];
+
+                    for (int i = 0; i < 8; i++)
+                    {
+                        Byte[] imagebyte = img.ReadImageFile("C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Resources\\TCLogo_Portrait.jpg");
+                        bdgImages[i] = img.ByteArrayToImage(imagebyte);
+                        bdgQRcodes[i] = img.ByteArrayToImage(imagebyte);
+                    }
+
+                    int batch = 0;
+
+                    for (int i = group*8; i < Math.Min(cklbxStudents.CheckedItems.Count, (group+1)*8); i++)
+                    {
+                        ckdindices[batch] = cklbxStudents.CheckedIndices[i];
+                        batch += 1;
+                    }
+
+                    for (int i = 0; i < batch; i++)
+                    {
+                        if (connect.State.ToString() != "Open")
+                        {
+                            connect = new OleDbConnection(strConnect);
+                            connect.Open();
+                        }
+                        // Fills idnumbers
+                        bdgIDs[i] = idnumbers[ckdindices[i]];
+
+                        // Accessing First and Last Names, and age
+                        string cmdstr = "SELECT First_Name, Last_Name, Date_Of_Birth, Grad_Date FROM tbl_Students WHERE StudentID =" + idnumbers[ckdindices[i]] + ";";
+                        cmd = new OleDbCommand(cmdstr, connect);
+                        dr = cmd.ExecuteReader();
+
+                        while (dr.Read())
+                        {
+                            bdgFnames[i] = dr["First_Name"].ToString().Trim();
+                            bdgLnames[i] = dr["Last_Name"].ToString().Trim();
+
+                            DateTime birthdate = Convert.ToDateTime(dr["Date_Of_Birth"]);
+                            TimeSpan tsage = DateTime.Today - birthdate;
+                            bdgAges[i] = Convert.ToInt32(Math.Floor((tsage.TotalDays) / 365.25));
+                            expDate[i] = Convert.ToDateTime(dr["Grad_Date"]);
+                        }
+                        dr.Close();
+
+                        // Accessing Photo
+                        cmdstr = "SELECT tbl_Image.IMG FROM tbl_Image WHERE tbl_Image.StudentID=" + idnumbers[ckdindices[i]] + ";";
+                        cmd = new OleDbCommand(cmdstr, connect);
+
+                        try
+                        {
+                            bdgImages[i] = img.ByteArrayToImage((Byte[])cmd.ExecuteScalar());
+                        }
+
+                        catch (NullReferenceException)
+                        {
+                        }
+
+                    }
+                    connect.Close();
+
+                    //Input items from list to bookmarks here
+                    object oTrue = true;
+                    object oFalse = false;
+                    object oMissing = System.Reflection.Missing.Value;
+                    object oTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\SalesBadge_Template.dotx";
+                    //object oTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\SalesBadge_TCMI_Template.dotx";
+
+                    object oage1 = "age1";
+                    object oage2 = "age2";
+                    object oage3 = "age3";
+                    object oage4 = "age4";
+                    object oage5 = "age5";
+                    object oage6 = "age6";
+                    object oage7 = "age7";
+                    object oage8 = "age8";
+
+                    object odate1 = "date1";
+                    object odate2 = "date2";
+                    object odate3 = "date3";
+                    object odate4 = "date4";
+                    object odate5 = "date5";
+                    object odate6 = "date6";
+                    object odate7 = "date7";
+                    object odate8 = "date8";
+
+                    object ofn1 = "fn1";
+                    object ofn2 = "fn2";
+                    object ofn3 = "fn3";
+                    object ofn4 = "fn4";
+                    object ofn5 = "fn5";
+                    object ofn6 = "fn6";
+                    object ofn7 = "fn7";
+                    object ofn8 = "fn8";
+
+                    object oid1 = "id1";
+                    object oid2 = "id2";
+                    object oid3 = "id3";
+                    object oid4 = "id4";
+                    object oid5 = "id5";
+                    object oid6 = "id6";
+                    object oid7 = "id7";
+                    object oid8 = "id8";
+
+                    object oln1 = "ln1";
+                    object oln2 = "ln2";
+                    object oln3 = "ln3";
+                    object oln4 = "ln4";
+                    object oln5 = "ln5";
+                    object oln6 = "ln6";
+                    object oln7 = "ln7";
+                    object oln8 = "ln8";
+
+                    object opic1 = "pic1";
+                    object opic2 = "pic2";
+                    object opic3 = "pic3";
+                    object opic4 = "pic4";
+                    object opic5 = "pic5";
+                    object opic6 = "pic6";
+                    object opic7 = "pic7";
+                    object opic8 = "pic8";
+
+                    object oqrcode1 = "qrcode1";
+                    object oqrcode2 = "qrcode2";
+                    object oqrcode3 = "qrcode3";
+                    object oqrcode4 = "qrcode4";
+                    object oqrcode5 = "qrcode5";
+                    object oqrcode6 = "qrcode6";
+                    object oqrcode7 = "qrcode7";
+                    object oqrcode8 = "qrcode8";
+
+                    Word._Application oWord;
+                    Word._Document oDoc;
+                    oWord = new Word.Application();
+                    oWord.Visible = true;
+
+                    oDoc = oWord.Documents.Add(ref oTemplate, ref oMissing, ref oMissing, ref oMissing);
+
+                    oDoc.Bookmarks.get_Item(ref oage1).Range.Text = bdgAges[0].ToString();
+                    oDoc.Bookmarks.get_Item(ref oage2).Range.Text = bdgAges[4].ToString();
+                    oDoc.Bookmarks.get_Item(ref oage3).Range.Text = bdgAges[1].ToString();
+                    oDoc.Bookmarks.get_Item(ref oage4).Range.Text = bdgAges[5].ToString();
+                    oDoc.Bookmarks.get_Item(ref oage5).Range.Text = bdgAges[2].ToString();
+                    oDoc.Bookmarks.get_Item(ref oage6).Range.Text = bdgAges[6].ToString();
+                    oDoc.Bookmarks.get_Item(ref oage7).Range.Text = bdgAges[3].ToString();
+                    oDoc.Bookmarks.get_Item(ref oage8).Range.Text = bdgAges[7].ToString();
+
+                    oDoc.Bookmarks.get_Item(ref odate1).Range.Text = expDate[0].ToString("d");
+                    oDoc.Bookmarks.get_Item(ref odate2).Range.Text = expDate[4].ToString("d");
+                    oDoc.Bookmarks.get_Item(ref odate3).Range.Text = expDate[1].ToString("d");
+                    oDoc.Bookmarks.get_Item(ref odate4).Range.Text = expDate[5].ToString("d");
+                    oDoc.Bookmarks.get_Item(ref odate5).Range.Text = expDate[2].ToString("d");
+                    oDoc.Bookmarks.get_Item(ref odate6).Range.Text = expDate[6].ToString("d");
+                    oDoc.Bookmarks.get_Item(ref odate7).Range.Text = expDate[3].ToString("d");
+                    oDoc.Bookmarks.get_Item(ref odate8).Range.Text = expDate[7].ToString("d");
+
+                    oDoc.Bookmarks.get_Item(ref ofn1).Range.Text = bdgFnames[0];
+                    oDoc.Bookmarks.get_Item(ref ofn2).Range.Text = bdgFnames[4];
+                    oDoc.Bookmarks.get_Item(ref ofn3).Range.Text = bdgFnames[1];
+                    oDoc.Bookmarks.get_Item(ref ofn4).Range.Text = bdgFnames[5];
+                    oDoc.Bookmarks.get_Item(ref ofn5).Range.Text = bdgFnames[2];
+                    oDoc.Bookmarks.get_Item(ref ofn6).Range.Text = bdgFnames[6];
+                    oDoc.Bookmarks.get_Item(ref ofn7).Range.Text = bdgFnames[3];
+                    oDoc.Bookmarks.get_Item(ref ofn8).Range.Text = bdgFnames[7];
+
+                    oDoc.Bookmarks.get_Item(ref oid1).Range.Text = bdgIDs[0].ToString();
+                    oDoc.Bookmarks.get_Item(ref oid2).Range.Text = bdgIDs[4].ToString();
+                    oDoc.Bookmarks.get_Item(ref oid3).Range.Text = bdgIDs[1].ToString();
+                    oDoc.Bookmarks.get_Item(ref oid4).Range.Text = bdgIDs[5].ToString();
+                    oDoc.Bookmarks.get_Item(ref oid5).Range.Text = bdgIDs[2].ToString();
+                    oDoc.Bookmarks.get_Item(ref oid6).Range.Text = bdgIDs[6].ToString();
+                    oDoc.Bookmarks.get_Item(ref oid7).Range.Text = bdgIDs[3].ToString();
+                    oDoc.Bookmarks.get_Item(ref oid8).Range.Text = bdgIDs[7].ToString();
+
+                    oDoc.Bookmarks.get_Item(ref oln1).Range.Text = bdgLnames[0];
+                    oDoc.Bookmarks.get_Item(ref oln2).Range.Text = bdgLnames[4];
+                    oDoc.Bookmarks.get_Item(ref oln3).Range.Text = bdgLnames[1];
+                    oDoc.Bookmarks.get_Item(ref oln4).Range.Text = bdgLnames[5];
+                    oDoc.Bookmarks.get_Item(ref oln5).Range.Text = bdgLnames[2];
+                    oDoc.Bookmarks.get_Item(ref oln6).Range.Text = bdgLnames[6];
+                    oDoc.Bookmarks.get_Item(ref oln7).Range.Text = bdgLnames[3];
+                    oDoc.Bookmarks.get_Item(ref oln8).Range.Text = bdgLnames[7];
+
+                    //INSERTS PICTURES
+                    string[] imagepath = new string[8];
+
+                    for (int j = 0; j < 8; j++)
+                    {
+                        var bmp = new Bitmap(bdgImages[j]);
+                        imagepath[j] = Path.GetTempFileName();
+                        bmp.Save(imagepath[j], bmp.RawFormat);
+                        bmp.Dispose();
+                    }
+
+                    oDoc.Bookmarks.get_Item(ref opic1).Range.InlineShapes.AddPicture(imagepath[0]);
+                    oDoc.Bookmarks.get_Item(ref opic2).Range.InlineShapes.AddPicture(imagepath[4]);
+                    oDoc.Bookmarks.get_Item(ref opic3).Range.InlineShapes.AddPicture(imagepath[1]);
+                    oDoc.Bookmarks.get_Item(ref opic4).Range.InlineShapes.AddPicture(imagepath[5]);
+                    oDoc.Bookmarks.get_Item(ref opic5).Range.InlineShapes.AddPicture(imagepath[2]);
+                    oDoc.Bookmarks.get_Item(ref opic6).Range.InlineShapes.AddPicture(imagepath[6]);
+                    oDoc.Bookmarks.get_Item(ref opic7).Range.InlineShapes.AddPicture(imagepath[3]);
+                    oDoc.Bookmarks.get_Item(ref opic8).Range.InlineShapes.AddPicture(imagepath[7]);
+
+                    // Creates QR Codes and Inserts QR Codes!!!!!!
+                    string[] QRcontent = new string[8];
+
+                    for (int k = 0; k < 8; k++)
+                    {
+                        try
+                        {
+                            QRcontent[k] = "Teen Challenge, Riverside\r\n(951) 683-4241\r\n" + cklbxStudents.CheckedItems[k].ToString() + "\r\nwww.givetc.org";
+                            //QRcontent[k] = "Teen Challenge Ministry Institute\r\n(323) 569-2818\r\n" + cklbxStudents.CheckedItems[k].ToString() + "\r\nwww.givetc.org"; 
+                        }
+
+                        catch (IndexOutOfRangeException)
+                        {
+                            QRcontent[k] = "Pond Charanvattanakit, He's never been to Connecticut!";
+                        }
+                    }
+
+                    string[] qrpath = new string[8];
+
+                    for (int j = 0; j < 8; j++)
+                    {
+                        IBarcodeWriter writer = new BarcodeWriter { Format = BarcodeFormat.QR_CODE, Options = new EncodingOptions { Height = 212, Width = 214 } };
+                        var result = writer.Write(QRcontent[j]);
+                        var bmp = new Bitmap(result);
+
+                        qrpath[j] = Path.GetTempFileName();
+                        bmp.Save(qrpath[j], bmp.RawFormat);
+
+                        bmp.Dispose();
+                    }
+
+                    oDoc.Bookmarks.get_Item(ref oqrcode1).Range.InlineShapes.AddPicture(qrpath[0]);
+                    oDoc.Bookmarks.get_Item(ref oqrcode2).Range.InlineShapes.AddPicture(qrpath[4]);
+                    oDoc.Bookmarks.get_Item(ref oqrcode3).Range.InlineShapes.AddPicture(qrpath[1]);
+                    oDoc.Bookmarks.get_Item(ref oqrcode4).Range.InlineShapes.AddPicture(qrpath[5]);
+                    oDoc.Bookmarks.get_Item(ref oqrcode5).Range.InlineShapes.AddPicture(qrpath[2]);
+                    oDoc.Bookmarks.get_Item(ref oqrcode6).Range.InlineShapes.AddPicture(qrpath[6]);
+                    oDoc.Bookmarks.get_Item(ref oqrcode7).Range.InlineShapes.AddPicture(qrpath[3]);
+                    oDoc.Bookmarks.get_Item(ref oqrcode8).Range.InlineShapes.AddPicture(qrpath[7]);
+
+                    group += 1;
+                }
+            }
+
+            else if (badgetype == 2) // Usher Badge
+            {
+                int group = 0;
+
+                while (group * 12 < cklbxStudents.CheckedItems.Count)
+                {
+
+                    int[] ckdindices = new int[12];
+                    string[] bdgFnames = new string[12];
+                    string[] bdgLnames = new string[12];
+                    Image[] bdgImages = new Image[12];
+                    Image[] bdgLogo = new Image[12];
+
+                    for (int i = 0; i < 12; i++)
+                    {
+                        Byte[] imagebyte = img.ReadImageFile("C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Resources\\TCLogo_Portrait.jpg");
+                        bdgImages[i] = img.ByteArrayToImage(imagebyte);
+
+                        imagebyte = img.ReadImageFile("C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Resources\\tcLogo.jpg");
+                        bdgLogo[i] = img.ByteArrayToImage(imagebyte);
+                    }
+
+                    int batch = 0;
+
+                    for (int i = group*12; i < Math.Min(cklbxStudents.CheckedItems.Count, (group+1)*12); i++)
+                    {
+                        ckdindices[batch] = cklbxStudents.CheckedIndices[i];
+                        batch += 1;
+                    }
+
+                    for (int i = 0; i < batch; i++)
+                    {
+                        if (connect.State.ToString() != "Open")
+                        {
+                            connect = new OleDbConnection(strConnect);
+                            connect.Open();
+                        }
+                        // Accessing First and Last Names, GradDate, InDate, and Advisor
+                        string cmdstr = "SELECT First_Name, Last_Name FROM tbl_Students WHERE StudentID =" + idnumbers[ckdindices[i]] + ";";
+                        cmd = new OleDbCommand(cmdstr, connect);
+                        dr = cmd.ExecuteReader();
+
+                        while (dr.Read())
+                        {
+                            bdgFnames[i] = dr["First_Name"].ToString().Trim();
+                            bdgLnames[i] = dr["Last_Name"].ToString().Trim();
+                        }
+                        dr.Close();
+
+                        // Accessing Photo
+                        cmdstr = "SELECT tbl_Image.IMG FROM tbl_Image WHERE tbl_Image.StudentID=" + idnumbers[ckdindices[i]] + ";";
+                        cmd = new OleDbCommand(cmdstr, connect);
+
+                        try
+                        {
+                            bdgImages[i] = img.ByteArrayToImage((Byte[])cmd.ExecuteScalar());
+                        }
+
+                        catch (NullReferenceException)
+                        {
+                        }
+
+                    }
+                    connect.Close();
+
+                    //Input items from list to bookmarks here
+                    object oTrue = true;
+                    object oFalse = false;
+                    object oMissing = System.Reflection.Missing.Value;
+                    object oTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\UsherBadge_Template.dotx";
+
+                    object ofn1 = "fn1";
+                    object ofn2 = "fn2";
+                    object ofn3 = "fn3";
+                    object ofn4 = "fn4";
+                    object ofn5 = "fn5";
+                    object ofn6 = "fn6";
+                    object ofn7 = "fn7";
+                    object ofn8 = "fn8";
+                    object ofn9 = "fn9";
+                    object ofn10 = "fn10";
+                    object ofn11 = "fn11";
+                    object ofn12 = "fn12";
+
+                    object oln1 = "ln1";
+                    object oln2 = "ln2";
+                    object oln3 = "ln3";
+                    object oln4 = "ln4";
+                    object oln5 = "ln5";
+                    object oln6 = "ln6";
+                    object oln7 = "ln7";
+                    object oln8 = "ln8";
+                    object oln9 = "ln9";
+                    object oln10 = "ln10";
+                    object oln11 = "ln11";
+                    object oln12 = "ln12";
+
+                    object opic1 = "pic1";
+                    object opic2 = "pic2";
+                    object opic3 = "pic3";
+                    object opic4 = "pic4";
+                    object opic5 = "pic5";
+                    object opic6 = "pic6";
+                    object opic7 = "pic7";
+                    object opic8 = "pic8";
+                    object opic9 = "pic9";
+                    object opic10 = "pic10";
+                    object opic11 = "pic11";
+                    object opic12 = "pic12";
+
+                    object ologo1 = "logo1";
+                    object ologo2 = "logo2";
+                    object ologo3 = "logo3";
+                    object ologo4 = "logo4";
+                    object ologo5 = "logo5";
+                    object ologo6 = "logo6";
+                    object ologo7 = "logo7";
+                    object ologo8 = "logo8";
+                    object ologo9 = "logo9";
+                    object ologo10 = "logo10";
+                    object ologo11 = "logo11";
+                    object ologo12 = "logo12";
+
+                    Word._Application oWord;
+                    Word._Document oDoc;
+                    oWord = new Word.Application();
+                    oWord.Visible = true;
+
+                    oDoc = oWord.Documents.Add(ref oTemplate, ref oMissing, ref oMissing, ref oMissing);
+
+                    oDoc.Bookmarks.get_Item(ref ofn1).Range.Text = bdgFnames[0];
+                    oDoc.Bookmarks.get_Item(ref ofn2).Range.Text = bdgFnames[1];
+                    oDoc.Bookmarks.get_Item(ref ofn3).Range.Text = bdgFnames[2];
+                    oDoc.Bookmarks.get_Item(ref ofn4).Range.Text = bdgFnames[3];
+                    oDoc.Bookmarks.get_Item(ref ofn5).Range.Text = bdgFnames[4];
+                    oDoc.Bookmarks.get_Item(ref ofn6).Range.Text = bdgFnames[5];
+                    oDoc.Bookmarks.get_Item(ref ofn7).Range.Text = bdgFnames[6];
+                    oDoc.Bookmarks.get_Item(ref ofn8).Range.Text = bdgFnames[7];
+                    oDoc.Bookmarks.get_Item(ref ofn9).Range.Text = bdgFnames[8];
+                    oDoc.Bookmarks.get_Item(ref ofn10).Range.Text = bdgFnames[9];
+                    oDoc.Bookmarks.get_Item(ref ofn11).Range.Text = bdgFnames[10];
+                    oDoc.Bookmarks.get_Item(ref ofn12).Range.Text = bdgFnames[11];
+
+                    oDoc.Bookmarks.get_Item(ref oln1).Range.Text = bdgLnames[0];
+                    oDoc.Bookmarks.get_Item(ref oln2).Range.Text = bdgLnames[1];
+                    oDoc.Bookmarks.get_Item(ref oln3).Range.Text = bdgLnames[2];
+                    oDoc.Bookmarks.get_Item(ref oln4).Range.Text = bdgLnames[3];
+                    oDoc.Bookmarks.get_Item(ref oln5).Range.Text = bdgLnames[4];
+                    oDoc.Bookmarks.get_Item(ref oln6).Range.Text = bdgLnames[5];
+                    oDoc.Bookmarks.get_Item(ref oln7).Range.Text = bdgLnames[6];
+                    oDoc.Bookmarks.get_Item(ref oln8).Range.Text = bdgLnames[7];
+                    oDoc.Bookmarks.get_Item(ref oln9).Range.Text = bdgLnames[8];
+                    oDoc.Bookmarks.get_Item(ref oln10).Range.Text = bdgLnames[9];
+                    oDoc.Bookmarks.get_Item(ref oln11).Range.Text = bdgLnames[10];
+                    oDoc.Bookmarks.get_Item(ref oln12).Range.Text = bdgLnames[11];
+
+
+                    //INSERTS PICTURES
+                    string[] imagepath = new string[12];
+
+                    for (int j = 0; j < 12; j++)
+                    {
+                        var bmp = new Bitmap(bdgImages[j]);
+                        imagepath[j] = Path.GetTempFileName();
+                        bmp.Save(imagepath[j], bmp.RawFormat);
+                        bmp.Dispose();
+                    }
+
+                    oDoc.Bookmarks.get_Item(ref opic1).Range.InlineShapes.AddPicture(imagepath[0]);
+                    oDoc.Bookmarks.get_Item(ref opic2).Range.InlineShapes.AddPicture(imagepath[1]);
+                    oDoc.Bookmarks.get_Item(ref opic3).Range.InlineShapes.AddPicture(imagepath[2]);
+                    oDoc.Bookmarks.get_Item(ref opic4).Range.InlineShapes.AddPicture(imagepath[3]);
+                    oDoc.Bookmarks.get_Item(ref opic5).Range.InlineShapes.AddPicture(imagepath[4]);
+                    oDoc.Bookmarks.get_Item(ref opic6).Range.InlineShapes.AddPicture(imagepath[5]);
+                    oDoc.Bookmarks.get_Item(ref opic7).Range.InlineShapes.AddPicture(imagepath[6]);
+                    oDoc.Bookmarks.get_Item(ref opic8).Range.InlineShapes.AddPicture(imagepath[7]);
+                    oDoc.Bookmarks.get_Item(ref opic9).Range.InlineShapes.AddPicture(imagepath[8]);
+                    oDoc.Bookmarks.get_Item(ref opic10).Range.InlineShapes.AddPicture(imagepath[9]);
+                    oDoc.Bookmarks.get_Item(ref opic11).Range.InlineShapes.AddPicture(imagepath[10]);
+                    oDoc.Bookmarks.get_Item(ref opic12).Range.InlineShapes.AddPicture(imagepath[11]);
+
+                    for (int j = 0; j < 12; j++)
+                    {
+                        var bmp = new Bitmap(bdgLogo[j]);
+                        imagepath[j] = Path.GetTempFileName();
+                        bmp.Save(imagepath[j], bmp.RawFormat);
+                        bmp.Dispose();
+                    }
+
+                    oDoc.Bookmarks.get_Item(ref ologo1).Range.InlineShapes.AddPicture(imagepath[0]);
+                    oDoc.Bookmarks.get_Item(ref ologo2).Range.InlineShapes.AddPicture(imagepath[1]);
+                    oDoc.Bookmarks.get_Item(ref ologo3).Range.InlineShapes.AddPicture(imagepath[2]);
+                    oDoc.Bookmarks.get_Item(ref ologo4).Range.InlineShapes.AddPicture(imagepath[3]);
+                    oDoc.Bookmarks.get_Item(ref ologo5).Range.InlineShapes.AddPicture(imagepath[4]);
+                    oDoc.Bookmarks.get_Item(ref ologo6).Range.InlineShapes.AddPicture(imagepath[5]);
+                    oDoc.Bookmarks.get_Item(ref ologo7).Range.InlineShapes.AddPicture(imagepath[6]);
+                    oDoc.Bookmarks.get_Item(ref ologo8).Range.InlineShapes.AddPicture(imagepath[7]);
+                    oDoc.Bookmarks.get_Item(ref ologo9).Range.InlineShapes.AddPicture(imagepath[8]);
+                    oDoc.Bookmarks.get_Item(ref ologo10).Range.InlineShapes.AddPicture(imagepath[9]);
+                    oDoc.Bookmarks.get_Item(ref ologo11).Range.InlineShapes.AddPicture(imagepath[10]);
+                    oDoc.Bookmarks.get_Item(ref ologo12).Range.InlineShapes.AddPicture(imagepath[11]);
+
+                    group += 1;
+                }
+            }
+            else if (badgetype == 3) // Board Tag
+            {
+                int group = 0;
+
+                while (group * 9 < cklbxStudents.CheckedItems.Count)
+                {
+
+                    int[] ckdindices = new int[9];
+                    string[] bdgFnames = new string[9];
+                    string[] bdgLnames = new string[9];
+                    Image[] bdgImages = new Image[9];
+                    string[] bdgAdvisors = new string[9];
+                    string[] RTCDate = new string[9];
+                    string[] GradDate = new string[9];
+
+                    for (int i = 0; i < 9; i++)
+                    {
+                        Byte[] imagebyte = img.ReadImageFile("C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Resources\\TCLogo_Portrait.jpg");
+                        bdgImages[i] = img.ByteArrayToImage(imagebyte);
+                    }
+
+                    int batch = 0;
+
+                    for (int i = group*9; i < Math.Min(cklbxStudents.CheckedItems.Count, (group+1)*9); i++)
+                    {
+                        ckdindices[batch] = cklbxStudents.CheckedIndices[i];
+                        batch += 1;
+                    }
+
+                    for (int i = 0; i < batch; i++)
+                    {
+                        if (connect.State.ToString() != "Open")
+                        {
+                            connect = new OleDbConnection(strConnect);
+                            connect.Open();
+                        }
+                        // Accessing First and Last Names, GradDate, InDate, and Advisor
+                        string cmdstr = "SELECT First_Name, Last_Name, RTC_Entry_Date, Grad_Date, AdvisorID FROM tbl_Students WHERE StudentID =" + idnumbers[ckdindices[i]] + ";";
+                        cmd = new OleDbCommand(cmdstr, connect);
+                        dr = cmd.ExecuteReader();
+
+                        while (dr.Read())
+                        {
+                            bdgFnames[i] = dr["First_Name"].ToString().Trim();
+                            bdgLnames[i] = dr["Last_Name"].ToString().Trim();
+                            GradDate[i] = (Convert.ToDateTime(dr["Grad_Date"])).ToString("d");
+                            RTCDate[i] = (Convert.ToDateTime(dr["RTC_Entry_Date"])).ToString("d");
+
+                            OleDbConnection con = new OleDbConnection(strConnect);
+                            con.Open();
+                            string stradv = "SELECT Advisor_Name FROM tbl_Advisor WHERE AdvisorID=" + Convert.ToInt32(dr["AdvisorID"]) + ";";
+                            OleDbCommand cmdadv = new OleDbCommand(stradv, con);
+
+                            bdgAdvisors[i] = cmdadv.ExecuteScalar().ToString();
+
+                            con.Close();
+                        }
+                        dr.Close();
+
+                        // Accessing Photo
+                        cmdstr = "SELECT tbl_Image.IMG FROM tbl_Image WHERE tbl_Image.StudentID=" + idnumbers[ckdindices[i]] + ";";
+                        cmd = new OleDbCommand(cmdstr, connect);
+
+                        try
+                        {
+                            bdgImages[i] = img.ByteArrayToImage((Byte[])cmd.ExecuteScalar());
+                        }
+
+                        catch (NullReferenceException)
+                        {
+                        }
+
+                    }
+                    connect.Close();
+
+                    //Input items from list to bookmarks here
+                    object oTrue = true;
+                    object oFalse = false;
+                    object oMissing = System.Reflection.Missing.Value;
+                    object oTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\BoardTag_Template.dotx";
+
+                    object ofn1 = "fn1";
+                    object ofn2 = "fn2";
+                    object ofn3 = "fn3";
+                    object ofn4 = "fn4";
+                    object ofn5 = "fn5";
+                    object ofn6 = "fn6";
+                    object ofn7 = "fn7";
+                    object ofn8 = "fn8";
+                    object ofn9 = "fn9";
+
+                    object oin1 = "in1";
+                    object oin2 = "in2";
+                    object oin3 = "in3";
+                    object oin4 = "in4";
+                    object oin5 = "in5";
+                    object oin6 = "in6";
+                    object oin7 = "in7";
+                    object oin8 = "in8";
+                    object oin9 = "in9";
+
+                    object oln1 = "ln1";
+                    object oln2 = "ln2";
+                    object oln3 = "ln3";
+                    object oln4 = "ln4";
+                    object oln5 = "ln5";
+                    object oln6 = "ln6";
+                    object oln7 = "ln7";
+                    object oln8 = "ln8";
+                    object oln9 = "ln9";
+
+                    object opic1 = "pic1";
+                    object opic2 = "pic2";
+                    object opic3 = "pic3";
+                    object opic4 = "pic4";
+                    object opic5 = "pic5";
+                    object opic6 = "pic6";
+                    object opic7 = "pic7";
+                    object opic8 = "pic8";
+                    object opic9 = "pic9";
+
+                    object ogr1 = "gr1";
+                    object ogr2 = "gr2";
+                    object ogr3 = "gr3";
+                    object ogr4 = "gr4";
+                    object ogr5 = "gr5";
+                    object ogr6 = "gr6";
+                    object ogr7 = "gr7";
+                    object ogr8 = "gr8";
+                    object ogr9 = "gr9";
+
+                    object oav1 = "av1";
+                    object oav2 = "av2";
+                    object oav3 = "av3";
+                    object oav4 = "av4";
+                    object oav5 = "av5";
+                    object oav6 = "av6";
+                    object oav7 = "av7";
+                    object oav8 = "av8";
+                    object oav9 = "av9";
+
+                    Word._Application oWord;
+                    Word._Document oDoc;
+                    oWord = new Word.Application();
+                    oWord.Visible = true;
+
+                    oDoc = oWord.Documents.Add(ref oTemplate, ref oMissing, ref oMissing, ref oMissing);
+
+                    oDoc.Bookmarks.get_Item(ref oav1).Range.Text = bdgAdvisors[0];
+                    oDoc.Bookmarks.get_Item(ref oav2).Range.Text = bdgAdvisors[1];
+                    oDoc.Bookmarks.get_Item(ref oav3).Range.Text = bdgAdvisors[2];
+                    oDoc.Bookmarks.get_Item(ref oav4).Range.Text = bdgAdvisors[3];
+                    oDoc.Bookmarks.get_Item(ref oav5).Range.Text = bdgAdvisors[4];
+                    oDoc.Bookmarks.get_Item(ref oav6).Range.Text = bdgAdvisors[5];
+                    oDoc.Bookmarks.get_Item(ref oav7).Range.Text = bdgAdvisors[6];
+                    oDoc.Bookmarks.get_Item(ref oav8).Range.Text = bdgAdvisors[7];
+                    oDoc.Bookmarks.get_Item(ref oav9).Range.Text = bdgAdvisors[8];
+
+                    oDoc.Bookmarks.get_Item(ref oin1).Range.Text = RTCDate[0];
+                    oDoc.Bookmarks.get_Item(ref oin2).Range.Text = RTCDate[1];
+                    oDoc.Bookmarks.get_Item(ref oin3).Range.Text = RTCDate[2];
+                    oDoc.Bookmarks.get_Item(ref oin4).Range.Text = RTCDate[3];
+                    oDoc.Bookmarks.get_Item(ref oin5).Range.Text = RTCDate[4];
+                    oDoc.Bookmarks.get_Item(ref oin6).Range.Text = RTCDate[5];
+                    oDoc.Bookmarks.get_Item(ref oin7).Range.Text = RTCDate[6];
+                    oDoc.Bookmarks.get_Item(ref oin8).Range.Text = RTCDate[7];
+                    oDoc.Bookmarks.get_Item(ref oin9).Range.Text = RTCDate[8];
+
+                    oDoc.Bookmarks.get_Item(ref ofn1).Range.Text = bdgFnames[0];
+                    oDoc.Bookmarks.get_Item(ref ofn2).Range.Text = bdgFnames[1];
+                    oDoc.Bookmarks.get_Item(ref ofn3).Range.Text = bdgFnames[2];
+                    oDoc.Bookmarks.get_Item(ref ofn4).Range.Text = bdgFnames[3];
+                    oDoc.Bookmarks.get_Item(ref ofn5).Range.Text = bdgFnames[4];
+                    oDoc.Bookmarks.get_Item(ref ofn6).Range.Text = bdgFnames[5];
+                    oDoc.Bookmarks.get_Item(ref ofn7).Range.Text = bdgFnames[6];
+                    oDoc.Bookmarks.get_Item(ref ofn8).Range.Text = bdgFnames[7];
+                    oDoc.Bookmarks.get_Item(ref ofn9).Range.Text = bdgFnames[8];
+
+                    oDoc.Bookmarks.get_Item(ref oln1).Range.Text = bdgLnames[0];
+                    oDoc.Bookmarks.get_Item(ref oln2).Range.Text = bdgLnames[1];
+                    oDoc.Bookmarks.get_Item(ref oln3).Range.Text = bdgLnames[2];
+                    oDoc.Bookmarks.get_Item(ref oln4).Range.Text = bdgLnames[3];
+                    oDoc.Bookmarks.get_Item(ref oln5).Range.Text = bdgLnames[4];
+                    oDoc.Bookmarks.get_Item(ref oln6).Range.Text = bdgLnames[5];
+                    oDoc.Bookmarks.get_Item(ref oln7).Range.Text = bdgLnames[6];
+                    oDoc.Bookmarks.get_Item(ref oln8).Range.Text = bdgLnames[7];
+                    oDoc.Bookmarks.get_Item(ref oln9).Range.Text = bdgLnames[8];
+
+                    oDoc.Bookmarks.get_Item(ref ogr1).Range.Text = GradDate[0];
+                    oDoc.Bookmarks.get_Item(ref ogr2).Range.Text = GradDate[1];
+                    oDoc.Bookmarks.get_Item(ref ogr3).Range.Text = GradDate[2];
+                    oDoc.Bookmarks.get_Item(ref ogr4).Range.Text = GradDate[3];
+                    oDoc.Bookmarks.get_Item(ref ogr5).Range.Text = GradDate[4];
+                    oDoc.Bookmarks.get_Item(ref ogr6).Range.Text = GradDate[5];
+                    oDoc.Bookmarks.get_Item(ref ogr7).Range.Text = GradDate[6];
+                    oDoc.Bookmarks.get_Item(ref ogr8).Range.Text = GradDate[7];
+                    oDoc.Bookmarks.get_Item(ref ogr9).Range.Text = GradDate[8];
+
+                    //INSERTS PICTURES
+                    string[] imagepath = new string[9];
+
+                    for (int j = 0; j < 9; j++)
+                    {
+                        var bmp = new Bitmap(bdgImages[j]);
+                        imagepath[j] = Path.GetTempFileName();
+                        bmp.Save(imagepath[j], bmp.RawFormat);
+                        bmp.Dispose();
+                    }
+
+                    oDoc.Bookmarks.get_Item(ref opic1).Range.InlineShapes.AddPicture(imagepath[0]);
+                    oDoc.Bookmarks.get_Item(ref opic2).Range.InlineShapes.AddPicture(imagepath[1]);
+                    oDoc.Bookmarks.get_Item(ref opic3).Range.InlineShapes.AddPicture(imagepath[2]);
+                    oDoc.Bookmarks.get_Item(ref opic4).Range.InlineShapes.AddPicture(imagepath[3]);
+                    oDoc.Bookmarks.get_Item(ref opic5).Range.InlineShapes.AddPicture(imagepath[4]);
+                    oDoc.Bookmarks.get_Item(ref opic6).Range.InlineShapes.AddPicture(imagepath[5]);
+                    oDoc.Bookmarks.get_Item(ref opic7).Range.InlineShapes.AddPicture(imagepath[6]);
+                    oDoc.Bookmarks.get_Item(ref opic8).Range.InlineShapes.AddPicture(imagepath[7]);
+                    oDoc.Bookmarks.get_Item(ref opic9).Range.InlineShapes.AddPicture(imagepath[8]);
+
+                    group += 1;
+                }
+            }
+            else if (badgetype == 4)
+            {
+                List<string> Name = new List<string>();
+                List<string> Department = new List<string>();
+                List<string> Fundraising = new List<string>();
+                List<string> GED = new List<string>();
+                List<string> Flagged = new List<string>();
+                List<string> Phase = new List<string>();
+                List<string> Advisor = new List<string>();
+                List<string> Room = new List<string>();
+                List<string> Age = new List<string>();
+                List<string> DOB = new List<string>();
+                List<string> IndCtr = new List<string>();
+                List<string> IndDate = new List<string>();
+                List<string> RTCDate = new List<string>();
+                List<string> GradDate = new List<string>();
+                List<string> Note = new List<string>();
+
+                // Check cklbxStudents for Query Parameters
+
+                if (connect.State.ToString() != "Open")
+                {
+                    connect = new OleDbConnection(strConnect);
+                    connect.Open();
+                }
+
+                string cmdstr = "SELECT * FROM tbl_Students ORDER BY Last_Name";
+                cmd = new OleDbCommand(cmdstr, connect);
+
+                dr = cmd.ExecuteReader();
+
+                while (dr.Read())
+                {
+                    idnumbers.Add(Convert.ToInt32(dr["StudentID"]));
+
+                    //Name
+                    Name.Add(dr["Last_Name"].ToString().Trim() + ", " + dr["First_Name"].ToString().Trim() + " " + dr["Middle_Initial"].ToString().Trim());
+
+                    //RTC Entry Date, Graduation Date, Notes
+                    if (cklbxStudents.GetItemChecked(2))
+                    {
+                        RTCDate.Add(Convert.ToDateTime(dr["RTC_Entry_Date"]).ToString("d"));
+                    }
+
+                    if (cklbxStudents.GetItemChecked(5))
+                    {
+                        GradDate.Add(Convert.ToDateTime(dr["Grad_Date"]).ToString("d"));
+                    }
+
+                    if (cklbxStudents.GetItemChecked(13))
+                    {
+                        Note.Add(dr["Notes"].ToString());
+                    }
+
+                    //Induction Center and Date
+                    if (cklbxStudents.GetItemChecked(0))
+                    {
+                        IndCtr.Add(dr["Induct_Center"].ToString().Trim());
+                    }
+
+                    if (cklbxStudents.GetItemChecked(1))
+                    {
+                        IndDate.Add(Convert.ToDateTime(dr["Induction_Date"]).ToString("d"));
+
+                    }
+                    //Age & DOB
+                    if (cklbxStudents.GetItemChecked(12))
+                    {
+                        DOB.Add(Convert.ToDateTime(dr["Date_Of_Birth"]).ToString("d"));
+                    }
+                    if (cklbxStudents.GetItemChecked(11))
+                    {
+                        Age.Add(GetAge(Convert.ToDateTime(dr["Date_Of_Birth"])));
+                    }
+                    //Phase
+                    if (cklbxStudents.GetItemChecked(4))
+                    {
+                        if (Convert.ToInt32(dr["PhaseID"]) == 5)
+                        {
+                            Phase.Add("A");
+                        }
+
+                        else
+                        {
+                            Phase.Add(dr["PhaseID"].ToString());
+                        }
+                    }
+                    //For Advisor
+
+                    if (cklbxStudents.GetItemChecked(3))
+                    {
+                        OleDbConnection conadv = new OleDbConnection(strConnect);
+                        conadv.Open();
+                        string strcmdadv = "SELECT tbl_Advisor.Advisor_Name FROM tbl_Advisor WHERE tbl_Advisor.AdvisorID= " + Convert.ToInt32(dr["AdvisorID"]) + ";";
+                        OleDbCommand cmdadv = new OleDbCommand(strcmdadv, conadv);
+                        string adv = cmdadv.ExecuteScalar().ToString();
+                        Advisor.Add((cmdadv.ExecuteScalar()).ToString());
+                        conadv.Close();
+                    }
+                    //For Room
+                    if (cklbxStudents.GetItemChecked(10))
+                    {
+                        OleDbConnection conroom = new OleDbConnection(strConnect);
+                        conroom.Open();
+                        string strcmdroom = "SELECT Room_Name from tbl_Rooms WHERE RoomID= " + Convert.ToInt32(dr["RoomID"]) + ";";
+                        OleDbCommand cmdroom = new OleDbCommand(strcmdroom, conroom);
+                        Room.Add(cmdroom.ExecuteScalar().ToString());
+                        conroom.Close();
+                    }
+                    //For Department, Fundraising Status, GED, and Flagged
+                    if (cklbxStudents.GetItemChecked(6) || cklbxStudents.GetItemChecked(7) || cklbxStudents.GetItemChecked(8) || cklbxStudents.GetItemChecked(9))
+                    {
+                        OleDbConnection conBigBoard = new OleDbConnection(strConnect);
+                        conBigBoard.Open();
+                        string strcmdBigBoard = "SELECT * from tbl_BigBoard WHERE StudentID= " + Convert.ToInt32(dr["StudentID"]) + ";";
+                        OleDbCommand cmdBigBoard = new OleDbCommand(strcmdBigBoard, conBigBoard);
+                        OleDbDataReader drBigBoard = cmdBigBoard.ExecuteReader();
+
+                        while (drBigBoard.Read())
+                        {
+                            if (cklbxStudents.GetItemChecked(7))
+                            {
+                                if (Convert.ToBoolean(drBigBoard["Fundraiser"]) == true)
+                                {
+                                    Fundraising.Add("Fundraiser");
+                                }
+
+                                else
+                                {
+                                    Fundraising.Add(" ");
+                                }
+                            }
+                            if (cklbxStudents.GetItemChecked(9))
+                            {
+                                if (Convert.ToBoolean(drBigBoard["GED"]) == true)
+                                {
+                                    GED.Add("GED");
+                                }
+
+                                else
+                                {
+                                    GED.Add(" ");
+                                }
+                            }
+                            if (cklbxStudents.GetItemChecked(8))
+                            {
+                                if (Convert.ToBoolean(drBigBoard["Flagged"]) == true)
+                                {
+                                    Flagged.Add(Convert.ToDateTime(drBigBoard["FlagEndDate"]).ToString("d"));
+                                }
+
+                                else
+                                {
+                                    Flagged.Add(" ");
+                                }
+                            }
+                            //For Department
+                            if (cklbxStudents.GetItemChecked(6))
+                            {
+                                OleDbConnection condep = new OleDbConnection(strConnect);
+                                condep.Open();
+                                string strcmddep = "SELECT Department from tbl_Departments WHERE DepartmentID= " + Convert.ToInt32(drBigBoard["DepartmentID"]) + ";";
+                                OleDbCommand cmddep = new OleDbCommand(strcmddep, condep);
+                                Department.Add(cmddep.ExecuteScalar().ToString().Trim());
+                                condep.Close();
+                            }
+                        }
+                        drBigBoard.Close();
+                        conBigBoard.Close();
+                    }
+                }
+
+                dr.Close();
+                connect.Close();
+
+                // Fill Excel Document based on chosen parameters
+                string strTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\Query_Template.xltx";
+                object oTemplate = strTemplate;
+                object oMissing = System.Reflection.Missing.Value;
+
+                Excel._Application xlApp;
+                Excel._Workbook xlWorkBook;
+
+                xlApp = new Excel.Application();
+                xlApp.Visible = true;
+                xlWorkBook = xlApp.Workbooks.Add(oTemplate);
+
+                Excel._Worksheet xlWorksheet = xlWorkBook.Worksheets["Students"];
+
+                // Insert Data and Reformat
+                // Title and date:
+
+                int row = 2;
+                int clmn = 1;
+
+                xlWorksheet.Cells[row, clmn] = "Riverside Teen Challenge Students as of " + DateTime.Today.ToString("d");
+
+                // Column Headers:
+                row = 4;
+                clmn = 3;
+
+                for (int q = 0; q < cklbxStudents.Items.Count; q++)
+                {
+                    if (cklbxStudents.GetItemChecked(q))
+                    {
+                        xlWorksheet.Cells[row, clmn] = cklbxStudents.Items[q].ToString().Trim();
+                        clmn += 1;
+                    }
+                }
+
+                // Student Data:
+
+                row = 5;
+
+                for (int i = 0; i < Name.Count; i++)
+                {
+                    int column = 2;
+                    xlWorksheet.Cells[row, column] = Name[i];
+
+                    column += 1;
+
+                    if (cklbxStudents.GetItemChecked(0))
+                    {
+                        xlWorksheet.Cells[row, column] = IndCtr[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(1))
+                    {
+                        xlWorksheet.Cells[row, column] = IndDate[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(2))
+                    {
+                        xlWorksheet.Cells[row, column] = RTCDate[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(3))
+                    {
+                        xlWorksheet.Cells[row, column] = Advisor[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(4))
+                    {
+                        xlWorksheet.Cells[row, column] = Phase[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(5))
+                    {
+                        xlWorksheet.Cells[row, column] = GradDate[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(6))
+                    {
+                        xlWorksheet.Cells[row, column] = Department[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(7))
+                    {
+                        xlWorksheet.Cells[row, column] = Fundraising[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(8))
+                    {
+                        xlWorksheet.Cells[row, column] = Flagged[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(9))
+                    {
+                        xlWorksheet.Cells[row, column] = GED[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(10))
+                    {
+                        xlWorksheet.Cells[row, column] = Room[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(11))
+                    {
+                        xlWorksheet.Cells[row, column] = Age[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(12))
+                    {
+                        xlWorksheet.Cells[row, column] = DOB[i];
+                        column += 1;
+                    }
+
+                    if (cklbxStudents.GetItemChecked(13))
+                    {
+                        xlWorksheet.Cells[row, column] = Note[i];
+                        column += 1;
+                    }
+
+                    row += 1;
+                }
+
+                for (int k = 2; k < 17; k++)
+                {
+                    xlWorksheet.Columns[k].Autofit();
+                }
+
+
+                for (int z = 16; z > 2 + cklbxStudents.CheckedItems.Count; z--)
+                {
+                    xlWorksheet.Columns[z].Delete();
+                }
+
+                for (int j = 0; j < 200; j++)
+                {
+                    xlWorksheet.Rows[row].Delete();
+                    j += 1;
+                }
+            }
+        }
+
+        private string GetAge(DateTime dob)
+        {
+            TimeSpan tsAge = DateTime.Today - dob;
+            return (Math.Floor((tsAge.TotalDays) / 365.25)).ToString();
+        }
+
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            this.Dispose();
+        }
+
+        private void btnClearList_Click(object sender, EventArgs e)
+        {
+            foreach (int i in cklbxStudents.CheckedIndices)
+            {
+                cklbxStudents.SetItemCheckState(i, CheckState.Unchecked);
+            }
+        }
+    }
+}
