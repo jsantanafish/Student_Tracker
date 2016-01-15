@@ -1,0 +1,188 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Threading;
+using System.Globalization;
+using System.IO;
+using System.IO.Packaging;
+using System.Linq;
+using System.Text;
+using System.Reflection;
+using System.Windows.Forms;
+using System.Data.OleDb;
+using Student_Traker_DB.User_Controls;
+using Student_Traker_DB.Classes;
+using ControlManager;
+using Student_Traker_DB.Forms;
+using Excel = Microsoft.Office.Interop.Excel;
+using System.Text.RegularExpressions;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmDepartments : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        private OleDbConnection connect = null;
+        private OleDbDataReader dr = null;
+        private OleDbCommand cmd = null;
+
+        private List<StudentTag> studtags = new List<StudentTag>();
+
+        private int i = 2;
+        private int j = 0;
+
+        public frmDepartments()
+        {
+            InitializeComponent();
+        }
+
+        private void frmDepartments_Load(object sender, EventArgs e)
+        {
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+
+            DrawBoard();
+            
+            connect.Close();
+        }
+
+        private void DrawBoard()
+        {
+            pnl.Controls.Clear();
+
+            if (connect.State.ToString() != "Open")
+            {
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+            }
+
+            string cmdstr = "SELECT * FROM tbl_BigBoard ORDER BY DepartmentID";
+            cmd = new OleDbCommand(cmdstr, connect);
+            dr = cmd.ExecuteReader();
+
+            int depIDprev = 0;
+
+            studtags = new List<StudentTag>();
+
+            j = 0;
+            i = 2;
+
+            while (dr.Read())
+            {
+                if (Convert.ToInt32(dr["DepartmentID"]) != depIDprev)
+                {
+                    if (depIDprev != 0)
+                    {
+                        j += 1;
+                    }
+
+                    DrawLabel(j * 142 + 45, Convert.ToInt32(dr["DepartmentID"]));
+
+                    i = 2;
+                    depIDprev = Convert.ToInt32(dr["DepartmentID"]);
+                }
+                // Determine Tag Location
+                if (i > 5) // max i value = 5
+                {
+                    j += 1;
+                    i -= 6; // number of columns
+                }
+
+                AddControlToForm(new StudentTag(Convert.ToInt32(dr["StudentID"])), Convert.ToInt32(dr["StudentID"]), new Point(11 + 163 * i, 11 + 142 * j));
+
+                i += 1;
+            }
+
+            dr.Close();
+
+            pnl.SendToBack();
+            pnl.Size = new Size(982, (j + 1) * 142);
+        }
+
+        private void DrawLabel(int ylabel, int deptid)
+        {
+            Label label = new Label();
+            label.Font = new Font(label.Font.FontFamily, 28);
+            label.Location = new Point(3, ylabel);
+            label.AutoSize = true;
+
+            OleDbConnection con = new OleDbConnection(strConnect);
+            con.Open();
+
+            string strcmd = "Select Department FROM tbl_Departments WHERE DepartmentID = "+ deptid +";";
+            OleDbCommand deptcmd = new OleDbCommand(strcmd, con);
+
+            label.Text = deptcmd.ExecuteScalar().ToString();
+
+            con.Close();
+
+            pnl.Controls.Add(label);
+
+            label.BringToFront();
+           
+        }
+
+
+        private void AddControlToForm(Control ctrl, int id, Point loc)
+        {
+            studtags.Add((StudentTag)ctrl);
+
+            studtags[studtags.Count - 1].Location = loc;
+            studtags[studtags.Count - 1].STUDENTID = id;
+
+            studtags[studtags.Count - 1].X = loc.X;
+            studtags[studtags.Count - 1].Y = loc.Y;
+
+            pnl.Controls.Add(ctrl);
+
+            studtags[studtags.Count - 1].BringToFront();
+            studtags[studtags.Count - 1].CHKBOXVISIBLE = false;
+            studtags[studtags.Count - 1].DELETEVISIBLE = false;
+            studtags[studtags.Count - 1].EDITSTUDINFO = true;
+            studtags[studtags.Count - 1].BIGBOARD = true;
+
+            
+        }
+
+        private void btnEditDept_Click(object sender, EventArgs e)
+        {
+            frmEditDepartments edDept = new frmEditDepartments();
+            DialogResult diaed = edDept.ShowDialog();
+
+            if (diaed == DialogResult.OK)
+            {
+                DrawBoard();
+            }
+        }
+
+        private void btnStudInfo_Click(object sender, EventArgs e)
+        {
+            frmStudentInfo info = new frmStudentInfo();
+            info.Show();
+            this.Dispose();
+        }
+
+        private void btnMSchedule_Click(object sender, EventArgs e)
+        {
+            frmMasterSchedule sched = new frmMasterSchedule();
+            sched.Show();
+            this.Dispose();
+        }
+
+        private void btnPrint_Click(object sender, EventArgs e)
+        {
+            frmPrint print = new frmPrint();
+            DialogResult diaprint = print.ShowDialog();
+        }
+
+        private void btnCreateList_Click(object sender, EventArgs e)
+        {
+            frmListPreamble preamble = new frmListPreamble();
+            preamble.Show();
+            this.Dispose();
+        }
+
+    }
+}
