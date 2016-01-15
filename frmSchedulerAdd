@@ -1,0 +1,421 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Windows.Forms;
+using System.Data.OleDb;
+
+using Student_Traker_DB.Classes;
+using Student_Traker_DB.Forms;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmSchedulerAdd : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+       
+        private OleDbConnection connect = null;
+        private OleDbDataReader dr = null;
+        private OleDbCommand cmd = null;
+
+        bool add;
+        int studentID;
+        int schedid;
+
+        public frmSchedulerAdd(int IDnumber, DateTime dateprevform, bool toAdd, string scheduleID)
+        {
+            InitializeComponent();
+
+            add = toAdd;
+            studentID = IDnumber;
+            schedid = Convert.ToInt32(scheduleID);
+
+            LoadTimeComboBoxes();
+
+            if (add == true)
+            {
+                this.dateTimePicker1.Value = dateprevform;
+                this.dateTimePicker2.Value = dateprevform;
+            }
+
+            else if (add == false)
+            {
+                dateTimePicker1.Enabled = true;
+                connect = new OleDbConnection(strConnect);
+                connect.Open();
+                string cmdstr = "Select * FROM tbl_Schedule WHERE tbl_Schedule.ScheduleID = " + schedid + " ;";
+                cmd = new OleDbCommand(cmdstr, connect);
+                dr = cmd.ExecuteReader();
+
+                while (dr.Read())
+                {
+                    DateTime dtfirstbound = Convert.ToDateTime(dr["StartDate"]);
+                    dateTimePicker1.Value = dtfirstbound.Date;
+                    DateTime dtsecondbound = Convert.ToDateTime(dr["EndDate"]);
+                    dateTimePicker2.Value = dtsecondbound.Date;
+
+                    cboStarTime.SelectedValue = Convert.ToInt32(dtfirstbound.TimeOfDay.TotalMinutes);
+                    cboEndTime.SelectedValue = Convert.ToInt32(dtsecondbound.TimeOfDay.TotalMinutes);
+
+                    richTextBox1.Text = Convert.ToString(dr["Note"]);
+                }
+
+            }
+            
+            
+        }
+
+        private void LoadTimeComboBoxes()
+        {
+            List<Time> times1 = new List<Time>();
+            List<Time> times2 = new List<Time>();
+
+            for (int t = 0; t < 48; t++)
+            {
+                times1.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+                times2.Add(new Time((DateTime.Today.Add(new TimeSpan(0, 30 * t, 0))).ToString("t"), t * 30));
+              }
+
+            // Set to comboboxes
+            cboStarTime.DataSource = times1;
+            cboEndTime.DataSource = times2;
+           
+            cboStarTime.DisplayMember = "timedisplay";
+            cboEndTime.DisplayMember = "timedisplay";
+            
+            cboStarTime.ValueMember = "minutes";
+            cboEndTime.ValueMember = "minutes";
+        }
+
+        public class Time
+        {
+            public string timedisplay { get; set; }
+            public int minutes { get; set; }
+            public Time(string td, int m)
+            {
+                timedisplay = td;
+                minutes = m;
+            }
+        }
+
+        private void frmSchedulerAdd_Load(object sender, EventArgs e)
+        {
+           
+        }
+
+        private void btnUpdate_Click(object sender, EventArgs e)
+        {
+            if (add == true)
+            {
+                if (dateTimePicker1.Value > dateTimePicker2.Value)
+                {
+                    DialogResult poptime = MessageBox.Show("Start time must proceed end time!","Error",MessageBoxButtons.OK,MessageBoxIcon.Error);
+
+                    if (poptime == DialogResult.OK)
+                    {
+                    }
+
+                }
+
+                else if (dateTimePicker1.Value == dateTimePicker2.Value && Convert.ToInt16(this.cboStarTime.SelectedValue) >= Convert.ToInt16(this.cboEndTime.SelectedValue))
+                {
+                    DialogResult poptime = MessageBox.Show("Start time must proceed end time!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+                    if (poptime == DialogResult.OK)
+                    {
+                    }
+                }
+                //Okay, got passed scheduling a nonsensical item
+                //Now, is there a conflict?
+                else
+                {
+
+                    connect = new OleDbConnection(strConnect);
+                    connect.Open();
+
+                    TimeSpan tsStart;
+                    TimeSpan tsEnd;
+
+                    tsStart = TimeSpan.FromMinutes(Convert.ToInt16(cboStarTime.SelectedValue));
+                    tsEnd = TimeSpan.FromMinutes(Convert.ToInt16(cboEndTime.SelectedValue));
+
+                    DateTime sdateselected = Convert.ToDateTime(dateTimePicker1.Text);
+                    DateTime edateselected = Convert.ToDateTime(dateTimePicker2.Text);
+
+                    sdateselected = sdateselected.Add(tsStart);
+                    edateselected = edateselected.Add(tsEnd);
+
+                    string cmdstr = "SELECT * FROM tbl_Schedule WHERE StudentID = " + studentID + ";";
+                    cmd = new OleDbCommand(cmdstr, connect);
+                    dr = cmd.ExecuteReader();
+
+                    bool discontinue = false;
+
+                    while (dr.Read() && discontinue == false)
+                    {
+                        string[] dates = new string[2];
+
+                        if (dr.HasRows)
+                        {
+                            dates[0] = (dr["StartDate"].ToString());
+                            dates[1] = (dr["EndDate"].ToString());
+
+                            DateTime exsdate = Convert.ToDateTime(dates[0]);
+                            DateTime exedate = Convert.ToDateTime(dates[1]);
+
+                            if ((sdateselected >= exsdate && sdateselected <= exedate) || (edateselected >= exsdate && edateselected <= exedate)) // in interval
+                            {
+                                //popup for existing event -> frmSchedulerUpPop
+                                // popup needs to display what the conflicting event is
+                                // popup needs to display start and end DateTime of Event
+                                // Clicking No should break the whole process of adding
+
+                                frmSchedulerUpPop poptime = new frmSchedulerUpPop(Convert.ToInt32(dr["ScheduleID"]), Convert.ToInt32(dr["StudentID"]));
+                                DialogResult diatime = poptime.ShowDialog();
+                                if (diatime == DialogResult.Yes)
+                                {
+                                    poptime.Dispose();
+                                }
+
+                                else if (diatime == DialogResult.Cancel)
+                                {
+                                    poptime.Dispose();
+                                    discontinue = true;
+                                }
+
+                            }
+
+                            else if (sdateselected < exsdate && edateselected > exedate) // encloses existing interval
+                            {
+                                frmSchedulerUpPop poptime = new frmSchedulerUpPop(Convert.ToInt32(dr["ScheduleID"]), Convert.ToInt32(dr["StudentID"]));
+                                DialogResult diatime = poptime.ShowDialog();
+                                if (diatime == DialogResult.Yes)
+                                {
+                                    poptime.Dispose();
+                                }
+                                else if (diatime == DialogResult.Cancel)
+                                {
+                                    poptime.Dispose();
+                                    discontinue = true;
+                                }
+                            }
+
+                        }
+                    }
+                    dr.Close();
+
+                    if (discontinue == true)
+                    {
+                        connect.Close();
+                        this.DialogResult = DialogResult.Cancel;
+
+                        this.Dispose();
+                        this.Close();
+                    }
+
+                    else if (discontinue == false)
+                    {
+                        try
+                        {
+                            string cmdstr0 = "SELECT max(ScheduleID) FROM tbl_Schedule;";
+                            cmd = new OleDbCommand(cmdstr0, connect);
+                            schedid = (int)cmd.ExecuteScalar();
+
+                            schedid += 1;
+                        }
+
+                        catch (System.InvalidCastException)
+                        {
+                            schedid = 1;
+                        }
+
+                        finally
+                        {
+                            string cmdstr1 = "INSERT INTO tbl_Schedule([ScheduleID], [StudentID], [StartDate], [EndDate], [Note]) VALUES (@ScheduleID, @StudentID, @SDate, @EDate, @Note)";
+                            cmd = new OleDbCommand(cmdstr1, connect);
+
+                            cmd.Parameters.AddWithValue("@ScheduleID", OleDbType.Integer).Value = schedid;
+                            cmd.Parameters.AddWithValue("@StudentID", OleDbType.Integer).Value = studentID;
+                            cmd.Parameters.AddWithValue("@SDate", sdateselected);
+                            cmd.Parameters.AddWithValue("@Edate", edateselected);
+                            cmd.Parameters.AddWithValue("@Note", richTextBox1.Text);
+                            cmd.ExecuteNonQuery();
+
+                            this.DialogResult = DialogResult.OK;
+
+                            connect.Close();
+
+                            this.Dispose();
+                            this.Close();
+                        }
+                    }
+                }
+            }
+
+            if (add == false)
+            {
+                if (dateTimePicker1.Value > dateTimePicker2.Value)
+                {
+                    DialogResult poptime = MessageBox.Show("Start time must proceed end time!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+                    if (poptime == DialogResult.OK)
+                    {
+                    }
+                }
+
+                else if (dateTimePicker1.Value == dateTimePicker2.Value && Convert.ToInt16(this.cboStarTime.SelectedValue) >= Convert.ToInt16(this.cboEndTime.SelectedValue))
+                {
+                    DialogResult poptime = MessageBox.Show("Start time must proceed end time!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+                    if (poptime == DialogResult.OK)
+                    {
+                    }
+                }
+                //Okay, got passed scheduling a nonsensical item
+                //Now, is there a conflict?
+                else
+                {
+
+                    connect = new OleDbConnection(strConnect);
+                    connect.Open();
+
+                    TimeSpan tsStart;
+                    TimeSpan tsEnd;
+
+                    tsStart = TimeSpan.FromMinutes(Convert.ToInt16(cboStarTime.SelectedValue));
+                    tsEnd = TimeSpan.FromMinutes(Convert.ToInt16(cboEndTime.SelectedValue));
+
+                    DateTime sdateselected = Convert.ToDateTime(dateTimePicker1.Text);
+                    DateTime edateselected = Convert.ToDateTime(dateTimePicker2.Text);
+
+                    sdateselected = sdateselected.Add(tsStart);
+                    edateselected = edateselected.Add(tsEnd);
+
+                    string cmdstr = "SELECT * FROM tbl_Schedule WHERE StudentID = " + studentID + " AND ScheduleID <> "+ schedid +";";
+                    cmd = new OleDbCommand(cmdstr, connect);
+                    dr = cmd.ExecuteReader();
+
+                    bool discontinue = false;
+
+                    while (dr.Read() && discontinue == false)
+                    {
+                        string[] dates = new string[2];
+
+                        if (dr.HasRows)
+                        {
+                            dates[0] = (dr["StartDate"].ToString());
+                            dates[1] = (dr["EndDate"].ToString());
+
+                            DateTime exsdate = Convert.ToDateTime(dates[0]);
+                            DateTime exedate = Convert.ToDateTime(dates[1]);
+
+                            if ((sdateselected >= exsdate && sdateselected <= exedate) || (edateselected >= exsdate && edateselected <= exedate)) // in interval
+                            {
+                                //popup for existing event -> frmSchedulerUpPop
+                                // popup needs to display what the conflicting event is
+                                // popup needs to display start and end DateTime of Event
+
+
+                                frmSchedulerUpPop poptime = new frmSchedulerUpPop(Convert.ToInt32(dr["ScheduleID"]), Convert.ToInt32(dr["StudentID"]));
+                                DialogResult diatime = poptime.ShowDialog();
+                                if (diatime == DialogResult.Yes)
+                                {
+                                    poptime.Dispose();
+                                }
+
+                                else if (diatime == DialogResult.Cancel)
+                                {
+                                    poptime.Dispose();
+                                    discontinue = true;
+                                }
+
+                            }
+
+                            else if (sdateselected < exsdate && edateselected > exedate) // encloses existing interval
+                            {
+                                frmSchedulerUpPop poptime = new frmSchedulerUpPop(Convert.ToInt32(dr["ScheduleID"]), Convert.ToInt32(dr["StudentID"]));
+                                DialogResult diatime = poptime.ShowDialog();
+                                if (diatime == DialogResult.Yes)
+                                {
+                                    poptime.Dispose();
+                                }
+                                else if (diatime == DialogResult.Cancel)
+                                {
+                                    poptime.Dispose();
+                                    discontinue = true;
+                                }
+                            }
+
+                        }
+                    }
+                    dr.Close();
+
+                    if (discontinue == true)
+                    {
+                        connect.Close();
+                        this.DialogResult = DialogResult.Cancel;
+
+                        this.Dispose();
+                        this.Close();
+                    }
+
+                    else if (discontinue == false)
+                    {
+
+                        string cmdstr1 = "UPDATE tbl_Schedule SET tbl_Schedule.StartDate=#"+ sdateselected +"#, tbl_Schedule.EndDate=#"+ edateselected +"#, tbl_Schedule.Note='" + Convert.ToString(richTextBox1.Text) + "' WHERE tbl_Schedule.ScheduleID="+ schedid +" AND tbl_Schedule.StudentID=" + studentID + ";";
+                        cmd = new OleDbCommand(cmdstr1, connect);
+
+                        cmd.ExecuteNonQuery();
+
+                        this.DialogResult = DialogResult.OK;
+                        connect.Close();
+
+                        this.Dispose();
+                        this.Close();
+                        
+                    }
+                }
+            }
+        }
+
+        private void btnExit_Click(object sender, EventArgs e)
+        {
+            this.DialogResult = DialogResult.Cancel;
+
+            this.Dispose();
+            this.Close();
+        }
+
+        private void frmSchedulerAdd_Load_1(object sender, EventArgs e)
+        {
+            // TODO: This line of code loads data into the 'ticketSales_StudentTrakerRDataSet.tbl_Times_copy' table. You can move, or remove it, as needed.
+            this.tbl_Times_copyTableAdapter.Fill(this.ticketSales_StudentTrakerRDataSet.tbl_Times_copy);
+            // TODO: This line of code loads data into the 'ticketSales_StudentTrakerRDataSet.tbl_Times' table. You can move, or remove it, as needed.
+            this.tbl_TimesTableAdapter.Fill(this.ticketSales_StudentTrakerRDataSet.tbl_Times);
+
+        }
+
+        private void cboStarTime_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if ((Convert.ToInt32(cboEndTime.SelectedValue) < Convert.ToInt32(cboStarTime.SelectedValue)) && (dateTimePicker2.Value == dateTimePicker1.Value))
+            {
+                this.cboEndTime.SelectedValue = cboStarTime.SelectedValue;
+            }
+        }
+        private void label1_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void dateTimePicker1_ValueChanged(object sender, EventArgs e)
+        {
+            if (dateTimePicker2.Value < dateTimePicker1.Value)
+            {
+                this.dateTimePicker2.Value = dateTimePicker1.Value;
+            }
+        }
+    }
+}
