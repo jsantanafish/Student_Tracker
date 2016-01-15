@@ -1,0 +1,41 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Windows.Forms;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmAddDept : Form
+    {
+        static public string newDept;
+
+        public frmAddDept()
+        {
+            InitializeComponent();
+        }
+
+        private void btnAdd_Click(object sender, EventArgs e)
+        {
+            if (txtDeptAdd.Text == "")
+            {
+                MessageBox.Show("Please enter the name of the Department you want to add");
+            }
+
+            else
+            {
+                newDept = txtDeptAdd.Text;
+                newDept = newDept.ToUpper();
+                this.DialogResult = DialogResult.OK;
+            }
+        }
+
+        private void frmAddDept_Load(object sender, EventArgs e)
+        {
+
+        }
+    }
+}
