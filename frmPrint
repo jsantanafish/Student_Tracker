@@ -1,0 +1,270 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Data.OleDb;
+using System.Linq;
+using System.Drawing;
+using System.Threading;
+using System.Text;
+using System.Windows.Forms;
+using System.IO;
+using System.Reflection;
+using Word = Microsoft.Office.Interop.Word;
+using Excel = Microsoft.Office.Interop.Excel;
+using System.Data.OleDb;
+using Microsoft.CSharp.RuntimeBinder;
+
+using Student_Traker_DB.Classes;
+using Student_Traker_DB.Forms;
+
+namespace Student_Traker_DB.Forms
+{
+    public partial class frmPrint : Form
+    {
+        string strConnect = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\TicketSales_StudentTrakerR.mdb";
+        private OleDbConnection connect = null;
+        private OleDbDataReader dr = null;
+        private OleDbCommand cmd = null;
+
+        public frmPrint()
+        {
+            InitializeComponent();
+        }
+
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            Globals.GLOBALINT = 0;
+            this.Dispose();
+        }
+
+        private void btnSalesBadge_Click(object sender, EventArgs e)
+        {
+            frmSalesBadge badge = new frmSalesBadge();
+            DialogResult diabadge = badge.ShowDialog();
+        }
+
+        private void btnBoardTag_Click(object sender, EventArgs e)
+        {
+            frmSalesBadge boardtag = new frmSalesBadge(3);
+            DialogResult diatag = boardtag.ShowDialog();
+        }
+
+        private void btnPhone_Click(object sender, EventArgs e)
+        {
+            // Read Data from Table
+            string strMonday = DateTime.Today.Date.ToString("d");
+            string strSunday = DateTime.Today.Date.AddDays(6).ToString("d");
+            List<string> LastNames = new List<string>();
+            List<string> FirstNames = new List<string>();
+            List<string> Rooms = new List<string>();
+            List<string> Advisors = new List<string>();
+            List<string> Phases = new List<string>();
+
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+            string strcmd = "SELECT Last_Name, First_Name, RoomID, AdvisorID, PhaseID FROM tbl_Students WHERE PhaseID <> 5 ORDER BY Last_Name;";
+            cmd = new OleDbCommand(strcmd, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                LastNames.Add((dr["Last_Name"]).ToString()); 
+                FirstNames.Add((dr["First_Name"]).ToString());
+                Phases.Add((dr["PhaseID"]).ToString());
+
+                //For Advisor
+                OleDbConnection conadv = new OleDbConnection(strConnect);
+                conadv.Open();
+                string strcmdadv = "SELECT tbl_Advisor.Advisor_Initials FROM tbl_Advisor WHERE tbl_Advisor.AdvisorID= "+ Convert.ToInt32(dr["AdvisorID"]) +";";
+                OleDbCommand cmdadv = new OleDbCommand(strcmdadv, conadv);
+                string adv = cmdadv.ExecuteScalar().ToString();
+                Advisors.Add((cmdadv.ExecuteScalar()).ToString());
+                conadv.Close();
+                
+                //For Room
+                OleDbConnection conroom = new OleDbConnection(strConnect);
+                conroom.Open();
+                string strcmdroom = "SELECT Room_Name from tbl_Rooms WHERE RoomID= " + Convert.ToInt32(dr["RoomID"]) + ";";
+                OleDbCommand cmdroom = new OleDbCommand(strcmdroom, conroom);
+                Rooms.Add(cmdroom.ExecuteScalar().ToString());
+                conroom.Close();
+            }
+
+            dr.Close();
+            connect.Close();
+
+            // Opens new Excel Document from Template
+            string strTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\Phone_Log_Template.xltx";
+            object oTemplate = strTemplate;
+            object oMissing = System.Reflection.Missing.Value;
+
+            Excel._Application xlApp;
+            Excel._Workbook xlWorkBook;
+           
+            xlApp = new Excel.Application();
+            xlApp.Visible = true;
+            xlWorkBook = xlApp.Workbooks.Add(oTemplate);
+
+            Excel._Worksheet xlWorksheet = xlWorkBook.Worksheets["PhoneLog"];
+
+            // Insert Data and Reformat
+
+            xlWorksheet.Cells[2, 2] = "Phone Log " + strMonday + " to " + strSunday;
+
+            int row = 6;
+
+            for (int i = 0; i < LastNames.Count; i++)
+            {
+                xlWorksheet.Cells[row, 2] = LastNames[i].Trim() + ", " + FirstNames[i].Trim() + " (" + Rooms[i].Trim() + Advisors[i].Trim() + Phases[i].Trim() + ")";
+                row += 1;
+            }
+
+            xlWorksheet.Columns[2].Autofit();
+           
+            for (int j = 0; j < 200; j++)
+            {
+                xlWorksheet.Rows[row].Delete();
+                j += 1;
+            }
+        }
+
+        private void btnSSO_Click(object sender, EventArgs e)
+        {
+            // Access Table
+            List<string> Names = new List<string>();
+            List<string> Rooms = new List<string>();
+            List<string> Phases = new List<string>();
+            List<string> Advisors = new List<string>();
+            List<string> AppNames = new List<string>();
+            List<string> AppRooms = new List<string>();
+
+            connect = new OleDbConnection(strConnect);
+            connect.Open();
+            string strcmd = "SELECT Last_Name, First_Name, RoomID, AdvisorID, PhaseID FROM tbl_Students WHERE PhaseID <> 5 ORDER BY Last_Name;";
+            cmd = new OleDbCommand(strcmd, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                Names.Add(dr["Last_Name"].ToString().Trim() + ", " + dr["First_Name"].ToString().Trim());
+                Phases.Add((dr["PhaseID"]).ToString());
+
+                //For Advisor
+                OleDbConnection conadv = new OleDbConnection(strConnect);
+                conadv.Open();
+                string strcmdadv = "SELECT tbl_Advisor.Advisor_Initials FROM tbl_Advisor WHERE tbl_Advisor.AdvisorID= " + Convert.ToInt32(dr["AdvisorID"]) + ";";
+                OleDbCommand cmdadv = new OleDbCommand(strcmdadv, conadv);
+                string adv = cmdadv.ExecuteScalar().ToString();
+                Advisors.Add((cmdadv.ExecuteScalar()).ToString());
+                conadv.Close();
+
+                //For Room
+                OleDbConnection conroom = new OleDbConnection(strConnect);
+                conroom.Open();
+                string strcmdroom = "SELECT Room_Name from tbl_Rooms WHERE RoomID= " + Convert.ToInt32(dr["RoomID"]) + ";";
+                OleDbCommand cmdroom = new OleDbCommand(strcmdroom, conroom);
+                Rooms.Add(cmdroom.ExecuteScalar().ToString());
+                conroom.Close();
+            }
+            dr.Close();
+
+            strcmd = "SELECT Last_Name, First_Name, RoomID FROM tbl_Students WHERE PhaseID = 5 ORDER BY Last_Name;";
+            cmd = new OleDbCommand(strcmd, connect);
+            dr = cmd.ExecuteReader();
+
+            while (dr.Read())
+            {
+                AppNames.Add(dr["Last_Name"].ToString().Trim() + ", " + dr["First_Name"].ToString().Trim());
+               
+                //For Room
+                OleDbConnection conroom = new OleDbConnection(strConnect);
+                conroom.Open();
+                string strcmdroom = "SELECT Room_Name from tbl_Rooms WHERE RoomID= " + Convert.ToInt32(dr["RoomID"]) + ";";
+                OleDbCommand cmdroom = new OleDbCommand(strcmdroom, conroom);
+                AppRooms.Add(cmdroom.ExecuteScalar().ToString());
+                conroom.Close();
+            }
+            dr.Close();
+            connect.Close();
+
+            // Fill Word Doc
+            object oTemplate = "C:\\Users\\access\\Documents\\Visual Studio 2010\\Projects\\Student_Traker_DB\\Student_Traker_DB\\Templates\\SSO_Template.dotx";
+            object oMissing = System.Reflection.Missing.Value;
+
+            Word._Application oWord;
+            Word._Document oDoc;
+            oWord = new Word.Application();
+            oWord.Visible = true;
+
+            oDoc = oWord.Documents.Add(ref oTemplate, ref oMissing, ref oMissing, ref oMissing);
+
+            object start_1 = 0;
+            object start_2 = 1;
+            Word.Range tbl_stud_loc = oDoc.Range(ref start_1, ref start_1);
+            Word.Range tbl_app_loc = oDoc.Range(ref start_2, ref start_2);
+
+            oDoc.Tables.Add(tbl_stud_loc, 1, 1);
+            oDoc.Tables.Add(tbl_app_loc, 1, 1);
+
+            Word.Table tbl_Apprentices = oDoc.Tables[2];
+            Word.Table tbl_Students = oDoc.Tables[1];
+
+            Word.Cell cell_AppTitle = tbl_Apprentices.Cell(1, 1);
+            Word.Cell cell_StudTitle = tbl_Students.Cell(1, 1);
+
+            cell_AppTitle.Range.Text = "Apprentices";
+            cell_StudTitle.Range.Text = "Students";
+
+            Word.Cell[] cells_stud = new Word.Cell[200];
+            Word.Cell[] cells_app = new Word.Cell[25];
+
+            for (int s = 0; s < Names.Count; s++)
+            {
+                tbl_Students.Rows.Add();
+                cells_stud[s] = tbl_Students.Cell(s+2,1);
+                cells_stud[s].Range.Text = Names[s].Trim() + " (" + Rooms[s].Trim() + Advisors[s].Trim() + Phases[s].Trim() + ")";
+            }
+
+            for (int a = 0; a < AppNames.Count; a++)
+            {
+                tbl_Apprentices.Rows.Add();
+                cells_app[a] = tbl_Apprentices.Cell(a+2, 1);
+                cells_app[a].Range.Text = AppNames[a].Trim() + " (" + AppRooms[a].Trim() + ")";
+            }
+
+            tbl_Students.Columns.AutoFit();
+            tbl_Apprentices.Columns.AutoFit();
+
+            tbl_Students.set_Style("Light Shading");
+            tbl_Apprentices.set_Style("Light Shading");
+
+            tbl_Students.Range.Bold = 1;
+            tbl_Apprentices.Range.Bold = 1;
+        }
+
+        private void btnQuery_Click(object sender, EventArgs e)
+        {
+            frmSalesBadge query = new frmSalesBadge(4);
+            DialogResult diatag = query.ShowDialog();
+        }
+
+        private void btnFaceSheet_Click(object sender, EventArgs e)
+        {
+            frmFaceSheet face = new frmFaceSheet();
+            DialogResult diaface = face.ShowDialog();
+        }
+
+        private void btnUsher_Click(object sender, EventArgs e)
+        {
+            frmSalesBadge usher = new frmSalesBadge(2);
+            DialogResult diasher = usher.ShowDialog();
+        }
+
+        private void frmPrint_Load(object sender, EventArgs e)
+        {
+
+        }
+    }
+
+}
